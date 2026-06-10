@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AIWOS — Sign In</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+--bg:#0a0a0f;--bg-surface:#111118;--bg-card:#161622;--bg-input:#13131f;
+--border:#2a2a3e;--border-light:#1e1e30;
+--text:#f0f0ff;--text-secondary:#9090b0;--text-muted:#555570;
+--accent:#7c3aed;--accent-hover:#6d28d9;--accent-glow:rgba(124,58,237,.15);
+--green:#10b981;--red:#ef4444;--amber:#f59e0b;
+--r:8px;--rl:12px;--rxl:16px;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;line-height:1.5;overflow:hidden}
+.auth-layout{display:flex;height:100vh}
+
+/* LEFT PANEL */
+.auth-left{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:40px;position:relative;overflow:hidden}
+.auth-left-bg{position:absolute;inset:0;background:var(--bg-surface);z-index:0}
+.auth-left-glow{position:absolute;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(124,58,237,.14) 0%,transparent 70%);top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:1}
+.auth-left-glow2{position:absolute;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(6,182,212,.07) 0%,transparent 70%);bottom:20%;right:10%;pointer-events:none;z-index:1}
+.auth-left-content{position:relative;z-index:2;width:100%;max-width:460px}
+
+/* RIGHT PANEL */
+.auth-right{width:520px;min-width:480px;background:var(--bg-card);border-left:1px solid var(--border-light);display:flex;flex-direction:column;justify-content:center;padding:48px 44px;overflow-y:auto}
+
+/* LOGO */
+.logo{display:flex;align-items:center;gap:10px;margin-bottom:40px}
+.logo-icon{width:34px;height:34px;background:var(--accent);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:#fff}
+.logo-text{font-size:17px;font-weight:700}
+.logo-sub{font-size:11px;color:var(--text-muted);display:block;margin-top:1px}
+
+/* FORM */
+.auth-title{font-size:26px;font-weight:800;margin-bottom:6px}
+.auth-sub{font-size:14px;color:var(--text-secondary);margin-bottom:32px}
+.form-group{margin-bottom:16px}
+.form-label{display:block;font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:6px}
+.form-input{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;color:var(--text);font-size:14px;font-family:inherit;transition:border-color .15s;outline:none}
+.form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.form-input::placeholder{color:var(--text-muted)}
+.form-input-icon{position:relative}
+.form-input-icon .ti{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:16px;pointer-events:none}
+.form-input-icon input{padding-left:36px}
+.form-input-icon .eye-btn{position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-muted);font-size:16px;background:none;border:none;padding:0}
+.form-input-icon .eye-btn:hover{color:var(--text-secondary)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 20px;border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;transition:all .15s;border:none;outline:none;font-family:inherit}
+.btn-primary{background:var(--accent);color:#fff;width:100%}
+.btn-primary:hover{background:var(--accent-hover);transform:translateY(-1px)}
+.btn-primary:active{transform:translateY(0)}
+.btn-google{background:var(--bg-input);color:var(--text);border:1px solid var(--border);width:100%;gap:10px}
+.btn-google:hover{border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.04)}
+.divider{display:flex;align-items:center;gap:12px;margin:20px 0;color:var(--text-muted);font-size:12px}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border-light)}
+.form-footer{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.form-check{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text-secondary);cursor:pointer}
+.form-check input{accent-color:var(--accent)}
+.form-link{font-size:13px;color:var(--accent);cursor:pointer}
+.form-link:hover{text-decoration:underline}
+.auth-switch{text-align:center;margin-top:24px;font-size:13px;color:var(--text-secondary)}
+.auth-switch a{color:var(--accent);cursor:pointer;font-weight:500}
+.auth-switch a:hover{text-decoration:underline}
+
+/* ERROR / SUCCESS */
+.alert{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.alert-error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);color:#f87171}
+.alert-success{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);color:#34d399}
+.alert{display:none}
+.alert.show{display:flex}
+
+/* SOCIAL PROOF LEFT */
+.feature-list{display:flex;flex-direction:column;gap:20px;margin-top:40px}
+.feature-row{display:flex;align-items:flex-start;gap:14px}
+.feature-row-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.feature-row-title{font-size:14px;font-weight:600;margin-bottom:3px}
+.feature-row-desc{font-size:13px;color:var(--text-secondary);line-height:1.55}
+.stat-chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:32px}
+.stat-chip{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:10px 16px;text-align:center}
+.stat-chip-value{font-size:20px;font-weight:800;color:var(--text);margin-bottom:2px}
+.stat-chip-label{font-size:11px;color:var(--text-muted)}
+
+/* TABS */
+.auth-tabs{display:flex;background:var(--bg-input);border-radius:var(--r);padding:3px;margin-bottom:28px}
+.auth-tab{flex:1;padding:8px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;text-align:center;color:var(--text-secondary);transition:all .15s}
+.auth-tab.active{background:var(--bg-elevated,#1e1e2e);color:var(--text)}
+
+/* PASSWORD STRENGTH */
+.pw-strength{margin-top:6px}
+.pw-bars{display:flex;gap:4px;margin-bottom:4px}
+.pw-bar{height:3px;flex:1;border-radius:2px;background:var(--border);transition:background .2s}
+.pw-bar.weak{background:var(--red)}
+.pw-bar.medium{background:var(--amber)}
+.pw-bar.strong{background:var(--green)}
+.pw-label{font-size:11px;color:var(--text-muted)}
+
+/* STEP INDICATOR */
+.step-dots{display:flex;gap:6px;justify-content:center;margin-bottom:24px}
+.step-dot{width:8px;height:8px;border-radius:50%;background:var(--border);transition:all .2s}
+.step-dot.active{background:var(--accent);width:20px;border-radius:4px}
+.step-dot.done{background:var(--green)}
+
+/* PLAN SELECTOR */
+.plan-cards{display:flex;gap:10px;margin-bottom:16px}
+.plan-card{flex:1;background:var(--bg-input);border:1.5px solid var(--border);border-radius:var(--rl);padding:14px;cursor:pointer;transition:all .15s;text-align:center}
+.plan-card:hover{border-color:rgba(124,58,237,.4)}
+.plan-card.selected{border-color:var(--accent);background:var(--accent-glow)}
+.plan-name{font-size:13px;font-weight:600;margin-bottom:4px}
+.plan-price{font-size:18px;font-weight:800}
+.plan-price span{font-size:11px;font-weight:400;color:var(--text-muted)}
+
+/* BACK BUTTON */
+.back-btn{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);cursor:pointer;margin-bottom:20px;background:none;border:none;padding:0;font-family:inherit}
+.back-btn:hover{color:var(--text)}
+
+/* ORG TYPE */
+.org-types{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+.org-type-card{background:var(--bg-input);border:1.5px solid var(--border);border-radius:var(--rl);padding:12px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:10px}
+.org-type-card:hover{border-color:rgba(124,58,237,.4)}
+.org-type-card.selected{border-color:var(--accent);background:var(--accent-glow)}
+.org-type-icon{font-size:20px;flex-shrink:0}
+.org-type-name{font-size:13px;font-weight:500}
+</style>
+</head>
+<body>
+<div class="auth-layout">
+
+  <!-- LEFT PANEL -->
+  <div class="auth-left">
+    <div class="auth-left-bg"></div>
+    <div class="auth-left-glow"></div>
+    <div class="auth-left-glow2"></div>
+    <div class="auth-left-content">
+      <div class="logo">
+        <div class="logo-icon">A</div>
+        <div>
+          <div class="logo-text">AIWOS</div>
+          <span class="logo-sub">AI Workforce Operating System</span>
+        </div>
+      </div>
+
+      <div style="font-size:28px;font-weight:800;line-height:1.2;margin-bottom:12px">
+        Your AI Workforce,<br>
+        <span style="background:linear-gradient(135deg,#a78bfa,#38bdf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">Ready to Work.</span>
+      </div>
+      <div style="font-size:14px;color:var(--text-secondary);line-height:1.7;max-width:380px;margin-bottom:36px">
+        Deploy AI agents across every department. Automate workflows, generate software, and scale your operations — all from one platform.
+      </div>
+
+      <div class="feature-list">
+        <div class="feature-row">
+          <div class="feature-row-icon" style="background:rgba(124,58,237,.12);color:#a78bfa"><i class="ti ti-robot"></i></div>
+          <div>
+            <div class="feature-row-title">128+ Agent Templates</div>
+            <div class="feature-row-desc">Pre-built agents for development, research, sales, HR, finance, and support.</div>
+          </div>
+        </div>
+        <div class="feature-row">
+          <div class="feature-row-icon" style="background:rgba(6,182,212,.12);color:#38bdf8"><i class="ti ti-git-branch"></i></div>
+          <div>
+            <div class="feature-row-title">LangGraph Orchestration</div>
+            <div class="feature-row-desc">Multi-agent workflows with conditional logic, state management, and real-time monitoring.</div>
+          </div>
+        </div>
+        <div class="feature-row">
+          <div class="feature-row-icon" style="background:rgba(16,185,129,.12);color:#34d399"><i class="ti ti-shield-check"></i></div>
+          <div>
+            <div class="feature-row-title">Enterprise Security</div>
+            <div class="feature-row-desc">SSO, role-based access, audit logs, and SOC 2 compliant infrastructure.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stat-chips">
+        <div class="stat-chip">
+          <div class="stat-chip-value">2,400+</div>
+          <div class="stat-chip-label">Companies</div>
+        </div>
+        <div class="stat-chip">
+          <div class="stat-chip-value">1.2M+</div>
+          <div class="stat-chip-label">Tasks/Day</div>
+        </div>
+        <div class="stat-chip">
+          <div class="stat-chip-value">99.9%</div>
+          <div class="stat-chip-label">Uptime</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="auth-right" id="auth-right">
+
+    <!-- ===== LOGIN FORM ===== -->
+    <div id="login-view">
+      <div class="auth-tabs">
+        <div class="auth-tab active" onclick="switchTab('login')">Sign In</div>
+        <div class="auth-tab" onclick="switchTab('signup')">Create Account</div>
+      </div>
+
+      <div class="auth-title">Welcome back</div>
+      <div class="auth-sub">Sign in to your AIWOS workspace</div>
+
+      <div class="alert alert-error" id="login-error">
+        <i class="ti ti-alert-circle"></i>
+        <span id="login-error-msg">Invalid email or password.</span>
+      </div>
+
+      <button class="btn btn-google" onclick="">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+          <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+          <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+        </svg>
+        Continue with Google
+      </button>
+
+      <div class="divider">or continue with email</div>
+
+      <div class="form-group">
+        <label class="form-label">Email Address</label>
+        <div class="form-input-icon">
+          <i class="ti ti-mail"></i>
+          <input class="form-input" type="email" placeholder="john@company.com" id="login-email" value="john@acmecorp.com">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <div class="form-input-icon">
+          <i class="ti ti-lock"></i>
+          <input class="form-input" type="password" placeholder="Enter your password" id="login-password" value="••••••••••">
+          <button class="eye-btn" onclick="togglePw('login-password',this)"><i class="ti ti-eye"></i></button>
+        </div>
+      </div>
+
+      <div class="form-footer">
+        <label class="form-check">
+          <input type="checkbox" checked>
+          Remember me
+        </label>
+        <span class="form-link" onclick="showForgot()">Forgot password?</span>
+      </div>
+
+      <button class="btn btn-primary" onclick="handleLogin()" id="login-btn">
+        <i class="ti ti-login"></i> Sign In
+      </button>
+
+      <div class="auth-switch">
+        Don't have an account? <a onclick="switchTab('signup')">Create one free</a>
+      </div>
+
+      <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border-light);display:flex;align-items:center;justify-content:center;gap:6px;color:var(--text-muted);font-size:12px">
+        <i class="ti ti-shield-lock" style="font-size:14px"></i>
+        Protected by enterprise-grade encryption
+      </div>
+    </div>
+
+    <!-- ===== SIGNUP FORM (multi-step) ===== -->
+    <div id="signup-view" style="display:none">
+      <div class="auth-tabs">
+        <div class="auth-tab" onclick="switchTab('login')">Sign In</div>
+        <div class="auth-tab active" onclick="switchTab('signup')">Create Account</div>
+      </div>
+
+      <!-- Step dots -->
+      <div class="step-dots">
+        <div class="step-dot active" id="sdot-1"></div>
+        <div class="step-dot" id="sdot-2"></div>
+        <div class="step-dot" id="sdot-3"></div>
+      </div>
+
+      <!-- STEP 1: Account Info -->
+      <div id="signup-step-1">
+        <div class="auth-title">Create your account</div>
+        <div class="auth-sub" style="margin-bottom:24px">Start your 14-day free trial, no credit card required.</div>
+
+        <div class="alert alert-error" id="signup-error">
+          <i class="ti ti-alert-circle"></i>
+          <span id="signup-error-msg">Please fill all required fields.</span>
+        </div>
+
+        <button class="btn btn-google" style="margin-bottom:16px">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+            <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+            <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+            <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+          </svg>
+          Sign up with Google
+        </button>
+        <div class="divider">or use email</div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label class="form-label">First Name</label>
+            <input class="form-input" placeholder="John" id="s-fname">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Last Name</label>
+            <input class="form-input" placeholder="Doe" id="s-lname">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Work Email</label>
+          <div class="form-input-icon">
+            <i class="ti ti-mail"></i>
+            <input class="form-input" type="email" placeholder="john@company.com" id="s-email">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <div class="form-input-icon">
+            <i class="ti ti-lock"></i>
+            <input class="form-input" type="password" placeholder="Min. 8 characters" id="s-password" oninput="checkPwStrength(this.value)">
+            <button class="eye-btn" onclick="togglePw('s-password',this)"><i class="ti ti-eye"></i></button>
+          </div>
+          <div class="pw-strength">
+            <div class="pw-bars">
+              <div class="pw-bar" id="pw-bar-1"></div>
+              <div class="pw-bar" id="pw-bar-2"></div>
+              <div class="pw-bar" id="pw-bar-3"></div>
+              <div class="pw-bar" id="pw-bar-4"></div>
+            </div>
+            <div class="pw-label" id="pw-label">Enter a password</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:20px">
+          <label class="form-check" style="align-items:flex-start;gap:8px;font-size:13px;color:var(--text-secondary)">
+            <input type="checkbox" id="s-terms" style="margin-top:2px;accent-color:var(--accent)">
+            I agree to the <span class="form-link" style="margin:0 2px">Terms of Service</span> and <span class="form-link" style="margin:0 2px">Privacy Policy</span>
+          </label>
+        </div>
+
+        <button class="btn btn-primary" onclick="signupNext(1)">
+          Continue <i class="ti ti-arrow-right"></i>
+        </button>
+
+        <div class="auth-switch">Already have an account? <a onclick="switchTab('login')">Sign in</a></div>
+      </div>
+
+      <!-- STEP 2: Organization Setup -->
+      <div id="signup-step-2" style="display:none">
+        <button class="back-btn" onclick="signupBack(2)"><i class="ti ti-arrow-left"></i> Back</button>
+        <div class="auth-title">Set up your organization</div>
+        <div class="auth-sub" style="margin-bottom:20px">Tell us about your company so we can configure your AI workforce.</div>
+
+        <div class="form-group">
+          <label class="form-label">Organization Name</label>
+          <div class="form-input-icon">
+            <i class="ti ti-building"></i>
+            <input class="form-input" placeholder="Acme Corporation" id="s-org">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Organization Type</label>
+          <div class="org-types">
+            <div class="org-type-card selected" onclick="selectOrgType(this)">
+              <span class="org-type-icon">🏢</span>
+              <span class="org-type-name">Enterprise</span>
+            </div>
+            <div class="org-type-card" onclick="selectOrgType(this)">
+              <span class="org-type-icon">💻</span>
+              <span class="org-type-name">Dev Agency</span>
+            </div>
+            <div class="org-type-card" onclick="selectOrgType(this)">
+              <span class="org-type-icon">📊</span>
+              <span class="org-type-name">Consulting</span>
+            </div>
+            <div class="org-type-card" onclick="selectOrgType(this)">
+              <span class="org-type-icon">🚀</span>
+              <span class="org-type-name">Startup</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label class="form-label">Industry</label>
+            <select class="form-input" style="appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23555570' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px">
+              <option>Select Industry</option>
+              <option>Software & Technology</option>
+              <option>Finance & Banking</option>
+              <option>Healthcare</option>
+              <option>E-Commerce</option>
+              <option>Education</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Company Size</label>
+            <select class="form-input" style="appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23555570' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px">
+              <option>Select Size</option>
+              <option>1–10</option>
+              <option>11–50</option>
+              <option>51–200</option>
+              <option>201–500</option>
+              <option>500+</option>
+            </select>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" onclick="signupNext(2)" style="margin-top:4px">
+          Continue <i class="ti ti-arrow-right"></i>
+        </button>
+      </div>
+
+      <!-- STEP 3: Choose Plan -->
+      <div id="signup-step-3" style="display:none">
+        <button class="back-btn" onclick="signupBack(3)"><i class="ti ti-arrow-left"></i> Back</button>
+        <div class="auth-title">Choose your plan</div>
+        <div class="auth-sub" style="margin-bottom:20px">All plans include a 14-day free trial.</div>
+
+        <div class="plan-cards">
+          <div class="plan-card" onclick="selectPlan(this)">
+            <div class="plan-name">Starter</div>
+            <div class="plan-price">$49<span>/mo</span></div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">10 agents</div>
+          </div>
+          <div class="plan-card selected" onclick="selectPlan(this)">
+            <div class="plan-name" style="color:var(--accent)">Pro</div>
+            <div class="plan-price" style="color:var(--accent)">$199<span>/mo</span></div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">50 agents</div>
+          </div>
+          <div class="plan-card" onclick="selectPlan(this)">
+            <div class="plan-name">Enterprise</div>
+            <div class="plan-price" style="font-size:20px">Custom</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Unlimited</div>
+          </div>
+        </div>
+
+        <div style="background:rgba(124,58,237,.07);border:1px solid rgba(124,58,237,.2);border-radius:var(--rl);padding:14px 16px;margin-bottom:20px;display:flex;align-items:flex-start;gap:10px">
+          <i class="ti ti-sparkles" style="color:var(--accent);margin-top:1px;flex-shrink:0"></i>
+          <div style="font-size:13px;color:var(--text-secondary);line-height:1.55">
+            <strong style="color:var(--text)">14-day free trial</strong> — No credit card required. Full access to all Pro features. Cancel anytime.
+          </div>
+        </div>
+
+        <button class="btn btn-primary" onclick="handleSignup()" id="signup-final-btn">
+          <i class="ti ti-rocket"></i> Start Free Trial
+        </button>
+
+        <div style="margin-top:12px;text-align:center;font-size:12px;color:var(--text-muted)">
+          <i class="ti ti-shield-check" style="font-size:12px"></i> No credit card required · Cancel anytime
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== FORGOT PASSWORD ===== -->
+    <div id="forgot-view" style="display:none">
+      <button class="back-btn" onclick="showLogin()"><i class="ti ti-arrow-left"></i> Back to Sign In</button>
+      <div class="auth-title">Reset your password</div>
+      <div class="auth-sub" style="margin-bottom:28px">Enter your email and we'll send you a reset link.</div>
+
+      <div class="alert alert-success" id="reset-success" style="margin-bottom:16px">
+        <i class="ti ti-check"></i>
+        Reset link sent! Check your inbox.
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Email Address</label>
+        <div class="form-input-icon">
+          <i class="ti ti-mail"></i>
+          <input class="form-input" type="email" placeholder="john@company.com" id="forgot-email">
+        </div>
+      </div>
+
+      <button class="btn btn-primary" onclick="handleForgot()">
+        <i class="ti ti-send"></i> Send Reset Link
+      </button>
+    </div>
+
+    <!-- ===== SUCCESS / ONBOARDING ===== -->
+    <div id="success-view" style="display:none;text-align:center">
+      <div style="width:72px;height:72px;background:rgba(16,185,129,.12);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px;color:var(--green)">
+        <i class="ti ti-check"></i>
+      </div>
+      <div class="auth-title" style="text-align:center;margin-bottom:8px">You're all set!</div>
+      <div style="font-size:14px;color:var(--text-secondary);margin-bottom:32px;line-height:1.6">
+        Your AI workforce is being initialized.<br>We're setting up your departments and agents.
+      </div>
+
+      <div style="background:var(--bg-input);border:1px solid var(--border);border-radius:var(--rl);padding:16px;margin-bottom:24px;text-align:left">
+        <div style="font-size:13px;font-weight:600;margin-bottom:12px">Setting up your workspace</div>
+        <div id="setup-steps" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+
+      <a href="index.html" class="btn btn-primary" id="go-dashboard" style="display:none">
+        <i class="ti ti-layout-dashboard"></i> Go to Dashboard
+      </a>
+    </div>
+
+  </div><!-- /auth-right -->
+</div><!-- /auth-layout -->
+
+<script>
+let signupStep = 1;
+
+function switchTab(tab) {
+  if (tab === 'login') {
+    document.getElementById('login-view').style.display = 'block';
+    document.getElementById('signup-view').style.display = 'none';
+    document.getElementById('forgot-view').style.display = 'none';
+    document.getElementById('success-view').style.display = 'none';
+  } else {
+    document.getElementById('login-view').style.display = 'none';
+    document.getElementById('signup-view').style.display = 'block';
+    document.getElementById('forgot-view').style.display = 'none';
+    document.getElementById('success-view').style.display = 'none';
+    showSignupStep(1);
+  }
+}
+
+function showLogin() {
+  document.getElementById('login-view').style.display = 'block';
+  document.getElementById('signup-view').style.display = 'none';
+  document.getElementById('forgot-view').style.display = 'none';
+  document.getElementById('success-view').style.display = 'none';
+}
+
+function showForgot() {
+  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('forgot-view').style.display = 'block';
+}
+
+function togglePw(id, btn) {
+  const input = document.getElementById(id);
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.innerHTML = '<i class="ti ti-eye-off"></i>';
+  } else {
+    input.type = 'password';
+    btn.innerHTML = '<i class="ti ti-eye"></i>';
+  }
+}
+
+function handleLogin() {
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-password').value;
+  const btn = document.getElementById('login-btn');
+  btn.innerHTML = '<i class="ti ti-loader" style="animation:spin 1s linear infinite"></i> Signing in...';
+  btn.disabled = true;
+  setTimeout(() => {
+    window.location.href = 'index.html';
+  }, 1200);
+}
+
+function showSignupStep(step) {
+  signupStep = step;
+  for (let i = 1; i <= 3; i++) {
+    const el = document.getElementById('signup-step-' + i);
+    if (el) el.style.display = i === step ? 'block' : 'none';
+    const dot = document.getElementById('sdot-' + i);
+    if (dot) {
+      dot.classList.remove('active', 'done');
+      if (i < step) dot.classList.add('done');
+      else if (i === step) dot.classList.add('active');
+    }
+  }
+}
+
+function signupNext(step) {
+  if (step === 1) {
+    const fname = document.getElementById('s-fname').value.trim();
+    const email = document.getElementById('s-email').value.trim();
+    const pw = document.getElementById('s-password').value;
+    const terms = document.getElementById('s-terms').checked;
+    const errEl = document.getElementById('signup-error');
+    const errMsg = document.getElementById('signup-error-msg');
+    if (!fname || !email || !pw) {
+      errMsg.textContent = 'Please fill in all required fields.';
+      errEl.classList.add('show'); return;
+    }
+    if (!email.includes('@')) {
+      errMsg.textContent = 'Please enter a valid email address.';
+      errEl.classList.add('show'); return;
+    }
+    if (pw.length < 8) {
+      errMsg.textContent = 'Password must be at least 8 characters.';
+      errEl.classList.add('show'); return;
+    }
+    if (!terms) {
+      errMsg.textContent = 'Please accept the terms of service.';
+      errEl.classList.add('show'); return;
+    }
+    errEl.classList.remove('show');
+  }
+  showSignupStep(step + 1);
+}
+
+function signupBack(step) {
+  showSignupStep(step - 1);
+}
+
+function selectOrgType(el) {
+  document.querySelectorAll('.org-type-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function selectPlan(el) {
+  document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function handleSignup() {
+  const btn = document.getElementById('signup-final-btn');
+  btn.innerHTML = '<i class="ti ti-loader"></i> Creating workspace...';
+  btn.disabled = true;
+  setTimeout(() => {
+    document.getElementById('signup-view').style.display = 'none';
+    document.getElementById('success-view').style.display = 'block';
+    runSetupSteps();
+  }, 1500);
+}
+
+const setupItems = [
+  'Creating your organization',
+  'Setting up 6 departments',
+  'Deploying 24 agent templates',
+  'Configuring knowledge base',
+  'Initializing LangGraph engine',
+  'Workspace ready!'
+];
+
+function runSetupSteps() {
+  const container = document.getElementById('setup-steps');
+  container.innerHTML = '';
+  setupItems.forEach((item, i) => {
+    const div = document.createElement('div');
+    div.id = 'setup-' + i;
+    div.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-muted)';
+    div.innerHTML = `<i class="ti ti-clock" style="font-size:14px;flex-shrink:0"></i> ${item}`;
+    container.appendChild(div);
+  });
+  setupItems.forEach((item, i) => {
+    setTimeout(() => {
+      const div = document.getElementById('setup-' + i);
+      div.innerHTML = `<i class="ti ti-loader" style="font-size:14px;flex-shrink:0;color:var(--accent);animation:spin 1s linear infinite"></i> <span style="color:var(--text-secondary)">${item}</span>`;
+      setTimeout(() => {
+        div.innerHTML = `<i class="ti ti-check" style="font-size:14px;flex-shrink:0;color:var(--green)"></i> <span style="color:var(--text)">${item}</span>`;
+        if (i === setupItems.length - 1) {
+          setTimeout(() => {
+            document.getElementById('go-dashboard').style.display = 'inline-flex';
+          }, 400);
+        }
+      }, 700);
+    }, i * 600);
+  });
+}
+
+function handleForgot() {
+  const email = document.getElementById('forgot-email').value;
+  if (!email) return;
+  document.getElementById('reset-success').classList.add('show');
+}
+
+// Check hash for signup
+if (window.location.hash === '#signup') switchTab('signup');
+
+// CSS animation
+const style = document.createElement('style');
+style.textContent = '@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+document.head.appendChild(style);
+</script>
+</body>
+</html> 
