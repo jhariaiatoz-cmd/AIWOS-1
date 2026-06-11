@@ -14,12 +14,11 @@ from app.models import Base
 # access to the values within the .ini file in use.
 config = context.config
 
-# Dynamically set the database connection URL from the environment variable if present
-database_url = os.getenv("DATABASE_URL")
+from app.core.config import settings
+
+# Dynamically set the database connection URL from the app settings
+database_url = settings.sync_database_url
 if database_url:
-    # Handle potentially different async/sync driver configurations
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
     config.set_main_option("sqlalchemy.url", database_url)
 
 # Interpret the config file for Python logging.
