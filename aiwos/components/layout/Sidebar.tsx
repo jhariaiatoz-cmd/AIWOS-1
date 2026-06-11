@@ -50,7 +50,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className="flex h-full w-[220px] min-w-[220px] flex-col overflow-hidden"
+      className="hidden h-full w-[220px] min-w-[220px] flex-col overflow-hidden md:flex"
       style={{ background: "var(--surface)", borderRight: "1px solid var(--border-light)" }}
     >
       {/* Logo */}
@@ -73,7 +73,7 @@ export function Sidebar() {
       </div>
 
       {/* Nav sections */}
-      <nav className="flex-1 overflow-y-auto px-2.5 py-2">
+      <nav className="flex-1 overflow-y-auto px-2.5 py-2" aria-label="Primary">
         {NAV.map((section) => (
           <div key={section.section} className="mb-1">
             <div
@@ -105,6 +105,7 @@ export function Sidebar() {
                         }
                       : {}
                   }
+                  aria-current={isActive ? "page" : undefined}
                 >
                   {isActive && (
                     <span
@@ -134,7 +135,11 @@ export function Sidebar() {
         className="p-3"
         style={{ borderTop: "1px solid var(--border-light)" }}
       >
-        <button className="flex w-full items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-card">
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-card focus:ring-2 focus:ring-primary/25 focus:outline-none"
+          aria-label="Open user menu"
+        >
           <div
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white"
             style={{

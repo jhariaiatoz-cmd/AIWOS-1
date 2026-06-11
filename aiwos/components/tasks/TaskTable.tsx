@@ -97,25 +97,25 @@ export function TaskTable({ tasks }: TaskTableProps) {
                 background: "var(--surface)",
               }}
             >
-              <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
+              <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
                 Task Title
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
+              <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
                 Status
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
+              <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
                 Priority
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
+              <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
                 Assigned To
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
+              <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
                 Due Date
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
+              <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
                 Progress
               </th>
-              <th className="px-6 py-3 text-center text-xs font-semibold text-muted-foreground">
+              <th scope="col" className="px-6 py-3 text-center text-xs font-semibold text-muted-foreground">
                 Actions
               </th>
             </tr>
@@ -199,7 +199,7 @@ export function TaskTable({ tasks }: TaskTableProps) {
                 <td className="px-6 py-4 text-center">
                   <button
                     className="inline-flex items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-[var(--border)] hover:text-foreground"
-                    aria-label="Actions"
+                    aria-label={`Actions for ${task.title}`}
                   >
                     <MoreVertical size={16} />
                   </button>

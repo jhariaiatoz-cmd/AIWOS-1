@@ -6,6 +6,7 @@ import { projectsData } from "@/lib/data/projects";
 import { ProjectSearchBar } from "@/components/projects/ProjectSearchBar";
 import { ProjectFilterBar } from "@/components/projects/ProjectFilterBar";
 import { ProjectGrid } from "@/components/projects/ProjectGrid";
+import { SummaryCard } from "@/components/common/SummaryCard";
 
 export default function ProjectsPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -44,7 +45,7 @@ export default function ProjectsPage() {
   return (
     <div className="min-h-full">
       {/* Page header with create button */}
-      <div className="mb-8 flex items-start justify-between">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="mb-2 text-2xl font-bold text-foreground">Projects</h1>
           <p className="text-sm text-muted-foreground">
@@ -61,67 +62,23 @@ export default function ProjectsPage() {
       </div>
 
       {/* Quick stats */}
-      <div className="mb-6 grid grid-cols-4 gap-3">
-        <div
-          className="rounded-lg border p-4"
-          style={{
-            background: "var(--card)",
-            borderColor: "var(--border-light)",
-          }}
-        >
-          <div className="text-xs text-muted-foreground">Total Projects</div>
-          <div className="mt-1 text-2xl font-bold text-foreground">
-            {stats.total}
-          </div>
-        </div>
-        <div
-          className="rounded-lg border p-4"
-          style={{
-            background: "var(--card)",
-            borderColor: "var(--border-light)",
-          }}
-        >
-          <div className="text-xs text-muted-foreground">Active</div>
-          <div className="mt-1 text-2xl font-bold" style={{ color: "var(--cyan)" }}>
-            {stats.active}
-          </div>
-        </div>
-        <div
-          className="rounded-lg border p-4"
-          style={{
-            background: "var(--card)",
-            borderColor: "var(--border-light)",
-          }}
-        >
-          <div className="text-xs text-muted-foreground">Completed</div>
-          <div className="mt-1 text-2xl font-bold" style={{ color: "var(--green)" }}>
-            {stats.completed}
-          </div>
-        </div>
-        <div
-          className="rounded-lg border p-4"
-          style={{
-            background: "var(--card)",
-            borderColor: "var(--border-light)",
-          }}
-        >
-          <div className="text-xs text-muted-foreground">Avg Progress</div>
-          <div className="mt-1 text-2xl font-bold text-foreground">
-            {avgProgress}%
-          </div>
-        </div>
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="Total Projects" value={stats.total} />
+        <SummaryCard label="Active" value={stats.active} tone="cyan" />
+        <SummaryCard label="Completed" value={stats.completed} tone="green" />
+        <SummaryCard label="Avg Progress" value={`${avgProgress}%`} />
       </div>
 
       {/* Controls */}
-      <div className="mb-6 flex gap-4">
-        <div className="flex-1">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row">
+        <div className="min-w-0 flex-1">
           <ProjectSearchBar
             value={searchQuery}
             onChange={setSearchQuery}
             placeholder="Search by project title or description..."
           />
         </div>
-        <div className="flex shrink-0 gap-3">
+        <div className="shrink-0">
           <ProjectFilterBar
             status={selectedStatus}
             onStatusChange={setSelectedStatus}

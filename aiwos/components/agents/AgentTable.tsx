@@ -61,25 +61,25 @@ export function AgentTable({ agents }: AgentTableProps) {
                 background: "var(--surface)",
               }}
             >
-              <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
+              <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
                 Agent Name
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
+              <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
                 Role
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
+              <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
                 Department
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
+              <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
                 Status
               </th>
-              <th className="px-6 py-3 text-center text-xs font-semibold text-muted-foreground">
+              <th scope="col" className="px-6 py-3 text-center text-xs font-semibold text-muted-foreground">
                 Tasks
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
+              <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
                 Performance
               </th>
-              <th className="px-6 py-3 text-center text-xs font-semibold text-muted-foreground">
+              <th scope="col" className="px-6 py-3 text-center text-xs font-semibold text-muted-foreground">
                 Actions
               </th>
             </tr>
@@ -162,7 +162,7 @@ export function AgentTable({ agents }: AgentTableProps) {
                 <td className="px-6 py-4 text-center">
                   <button
                     className="inline-flex items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-[var(--border)] hover:text-foreground"
-                    aria-label="Actions"
+                    aria-label={`Actions for ${agent.name}`}
                   >
                     <MoreVertical size={16} />
                   </button>

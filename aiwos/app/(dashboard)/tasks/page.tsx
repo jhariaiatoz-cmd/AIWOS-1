@@ -5,6 +5,8 @@ import { tasksData } from "@/lib/data/tasks";
 import { TaskSearchBar } from "@/components/tasks/TaskSearchBar";
 import { TaskFilterBar } from "@/components/tasks/TaskFilterBar";
 import { TaskTable } from "@/components/tasks/TaskTable";
+import { EmptyState } from "@/components/common/EmptyState";
+import { SummaryCard } from "@/components/common/SummaryCard";
 
 export default function TasksPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -51,67 +53,23 @@ export default function TasksPage() {
       </div>
 
       {/* Quick stats */}
-      <div className="mb-6 grid grid-cols-4 gap-3">
-        <div
-          className="rounded-lg border p-4"
-          style={{
-            background: "var(--card)",
-            borderColor: "var(--border-light)",
-          }}
-        >
-          <div className="text-xs text-muted-foreground">Total Tasks</div>
-          <div className="mt-1 text-2xl font-bold text-foreground">
-            {stats.total}
-          </div>
-        </div>
-        <div
-          className="rounded-lg border p-4"
-          style={{
-            background: "var(--card)",
-            borderColor: "var(--border-light)",
-          }}
-        >
-          <div className="text-xs text-muted-foreground">In Progress</div>
-          <div className="mt-1 text-2xl font-bold" style={{ color: "var(--cyan)" }}>
-            {stats.inProgress}
-          </div>
-        </div>
-        <div
-          className="rounded-lg border p-4"
-          style={{
-            background: "var(--card)",
-            borderColor: "var(--border-light)",
-          }}
-        >
-          <div className="text-xs text-muted-foreground">Completed</div>
-          <div className="mt-1 text-2xl font-bold" style={{ color: "var(--green)" }}>
-            {stats.completed}
-          </div>
-        </div>
-        <div
-          className="rounded-lg border p-4"
-          style={{
-            background: "var(--card)",
-            borderColor: "var(--border-light)",
-          }}
-        >
-          <div className="text-xs text-muted-foreground">High Priority</div>
-          <div className="mt-1 text-2xl font-bold" style={{ color: "var(--red)" }}>
-            {stats.highPriority}
-          </div>
-        </div>
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="Total Tasks" value={stats.total} />
+        <SummaryCard label="In Progress" value={stats.inProgress} tone="cyan" />
+        <SummaryCard label="Completed" value={stats.completed} tone="green" />
+        <SummaryCard label="High Priority" value={stats.highPriority} tone="red" />
       </div>
 
       {/* Controls */}
-      <div className="mb-6 flex gap-4">
-        <div className="flex-1">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row">
+        <div className="min-w-0 flex-1">
           <TaskSearchBar
             value={searchQuery}
             onChange={setSearchQuery}
             placeholder="Search by task title or description..."
           />
         </div>
-        <div className="flex shrink-0 gap-3">
+        <div className="shrink-0">
           <TaskFilterBar
             status={selectedStatus}
             priority={selectedPriority}
@@ -134,17 +92,7 @@ export default function TasksPage() {
       {filteredTasks.length > 0 ? (
         <TaskTable tasks={filteredTasks} />
       ) : (
-        <div
-          className="flex min-h-[400px] flex-col items-center justify-center rounded-xl border"
-          style={{
-            background: "var(--card)",
-            borderColor: "var(--border-light)",
-          }}
-        >
-          <p className="text-sm text-muted-foreground">
-            No tasks found matching your criteria.
-          </p>
-        </div>
+        <EmptyState title="No tasks found" description="Try changing your search or filters." />
       )}
     </div>
   );

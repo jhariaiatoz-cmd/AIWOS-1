@@ -21,7 +21,7 @@ export default function DashboardPage() {
       <CommandHero />
 
       {/* Stat Cards */}
-      <div className="mb-6 grid grid-cols-4 gap-3.5">
+      <div className="mb-6 grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
         {statCards.map((card) => (
           <StatCard key={card.label} card={card} />
         ))}
@@ -29,7 +29,7 @@ export default function DashboardPage() {
 
       {/* Department Overview */}
       <div className="mb-6">
-        <div className="mb-3.5 flex items-center justify-between">
+        <div className="mb-3.5 flex items-center justify-between gap-3">
           <span className="text-sm font-semibold text-foreground">
             Department Overview
           </span>
@@ -45,7 +45,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Bottom two-column layout: chart+agents | activity */}
-      <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 360px" }}>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         {/* Left column */}
         <div className="flex flex-col gap-4">
           <TaskCompletionChart />

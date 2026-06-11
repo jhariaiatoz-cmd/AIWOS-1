@@ -1,4 +1,5 @@
 import type { Project } from "@/lib/data/projects";
+import { EmptyState } from "@/components/common/EmptyState";
 import { ProjectCard } from "./ProjectCard";
 
 interface ProjectGridProps {
@@ -8,17 +9,10 @@ interface ProjectGridProps {
 export function ProjectGrid({ projects }: ProjectGridProps) {
   if (projects.length === 0) {
     return (
-      <div
-        className="flex min-h-[400px] flex-col items-center justify-center rounded-xl border"
-        style={{
-          background: "var(--card)",
-          borderColor: "var(--border-light)",
-        }}
-      >
-        <p className="text-sm text-muted-foreground">
-          No projects found matching your criteria.
-        </p>
-      </div>
+      <EmptyState
+        title="No projects found"
+        description="Try changing your search or filters."
+      />
     );
   }
 

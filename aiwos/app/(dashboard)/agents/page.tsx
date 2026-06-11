@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Metadata } from "next";
 import { agentsData } from "@/lib/data/agents";
 import { SearchBar } from "@/components/agents/SearchBar";
 import { FilterBar } from "@/components/agents/FilterBar";
 import { AgentTable } from "@/components/agents/AgentTable";
+import { EmptyState } from "@/components/common/EmptyState";
 
 export default function AgentsPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -46,15 +46,15 @@ export default function AgentsPage() {
       </div>
 
       {/* Controls */}
-      <div className="mb-6 flex gap-4">
-        <div className="flex-1">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row">
+        <div className="min-w-0 flex-1">
           <SearchBar
             value={searchQuery}
             onChange={setSearchQuery}
             placeholder="Search by agent name or role..."
           />
         </div>
-        <div className="flex shrink-0 gap-3">
+        <div className="shrink-0">
           <FilterBar
             department={selectedDepartment}
             status={selectedStatus}
@@ -77,17 +77,7 @@ export default function AgentsPage() {
       {filteredAgents.length > 0 ? (
         <AgentTable agents={filteredAgents} />
       ) : (
-        <div
-          className="flex min-h-[400px] flex-col items-center justify-center rounded-xl border"
-          style={{
-            background: "var(--card)",
-            borderColor: "var(--border-light)",
-          }}
-        >
-          <p className="text-sm text-muted-foreground">
-            No agents found matching your criteria.
-          </p>
-        </div>
+        <EmptyState title="No agents found" description="Try changing your search or filters." />
       )}
     </div>
   );

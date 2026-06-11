@@ -1,6 +1,7 @@
 "use client";
 
-import { X } from "lucide-react";
+import { FilterSelect } from "@/components/common/FilterSelect";
+import { ResetFiltersButton } from "@/components/common/ResetFiltersButton";
 import { taskStatuses, taskPriorities } from "@/lib/data/tasks";
 
 interface TaskFilterBarProps {
@@ -21,60 +22,22 @@ export function TaskFilterBar({
   const hasActiveFilters = status || priority;
 
   return (
-    <div className="flex items-center gap-3">
-      {/* Status filter */}
-      <select
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <FilterSelect
+        label="Filter tasks by status"
         value={status}
-        onChange={(e) => onStatusChange(e.target.value)}
-        className="h-10 rounded-lg border px-3 text-sm outline-none transition-colors"
-        style={{
-          background: "var(--input-bg)",
-          borderColor: "var(--border)",
-          color: "var(--foreground)",
-        }}
-      >
-        <option value="">All Status</option>
-        {taskStatuses.map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
-      </select>
-
-      {/* Priority filter */}
-      <select
+        onChange={onStatusChange}
+        options={taskStatuses}
+        allLabel="All Status"
+      />
+      <FilterSelect
+        label="Filter tasks by priority"
         value={priority}
-        onChange={(e) => onPriorityChange(e.target.value)}
-        className="h-10 rounded-lg border px-3 text-sm outline-none transition-colors"
-        style={{
-          background: "var(--input-bg)",
-          borderColor: "var(--border)",
-          color: "var(--foreground)",
-        }}
-      >
-        <option value="">All Priority</option>
-        {taskPriorities.map((p) => (
-          <option key={p} value={p}>
-            {p}
-          </option>
-        ))}
-      </select>
-
-      {/* Reset button */}
-      {hasActiveFilters && (
-        <button
-          onClick={onReset}
-          className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors"
-          style={{
-            background: "var(--card)",
-            borderColor: "var(--border)",
-            color: "var(--muted-foreground)",
-          }}
-        >
-          <X size={14} />
-          Reset
-        </button>
-      )}
+        onChange={onPriorityChange}
+        options={taskPriorities}
+        allLabel="All Priority"
+      />
+      {hasActiveFilters && <ResetFiltersButton onReset={onReset} />}
     </div>
   );
 }

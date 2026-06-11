@@ -1,6 +1,7 @@
 "use client";
 
-import { X } from "lucide-react";
+import { FilterSelect } from "@/components/common/FilterSelect";
+import { ResetFiltersButton } from "@/components/common/ResetFiltersButton";
 import { departments, statuses } from "@/lib/data/agents";
 
 interface FiltersProps {
@@ -21,60 +22,22 @@ export function FilterBar({
   const hasActiveFilters = department || status;
 
   return (
-    <div className="flex items-center gap-3">
-      {/* Department filter */}
-      <select
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <FilterSelect
+        label="Filter agents by department"
         value={department}
-        onChange={(e) => onDepartmentChange(e.target.value)}
-        className="h-10 rounded-lg border px-3 text-sm outline-none transition-colors"
-        style={{
-          background: "var(--input-bg)",
-          borderColor: "var(--border)",
-          color: "var(--foreground)",
-        }}
-      >
-        <option value="">All Departments</option>
-        {departments.map((dept) => (
-          <option key={dept} value={dept}>
-            {dept}
-          </option>
-        ))}
-      </select>
-
-      {/* Status filter */}
-      <select
+        onChange={onDepartmentChange}
+        options={departments}
+        allLabel="All Departments"
+      />
+      <FilterSelect
+        label="Filter agents by status"
         value={status}
-        onChange={(e) => onStatusChange(e.target.value)}
-        className="h-10 rounded-lg border px-3 text-sm outline-none transition-colors"
-        style={{
-          background: "var(--input-bg)",
-          borderColor: "var(--border)",
-          color: "var(--foreground)",
-        }}
-      >
-        <option value="">All Status</option>
-        {statuses.map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
-      </select>
-
-      {/* Reset button */}
-      {hasActiveFilters && (
-        <button
-          onClick={onReset}
-          className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors"
-          style={{
-            background: "var(--card)",
-            borderColor: "var(--border)",
-            color: "var(--muted-foreground)",
-          }}
-        >
-          <X size={14} />
-          Reset
-        </button>
-      )}
+        onChange={onStatusChange}
+        options={statuses}
+        allLabel="All Status"
+      />
+      {hasActiveFilters && <ResetFiltersButton onReset={onReset} />}
     </div>
   );
 }
