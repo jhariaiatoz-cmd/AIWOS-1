@@ -3,6 +3,7 @@ from typing import List
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.project import Project
@@ -23,8 +24,15 @@ async def create_project(
         created_by=current_user_id,
     )
     db.add(project)
-    await db.commit()
-    await db.refresh(project)
+    try:
+        await db.commit()
+        await db.refresh(project)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid foreign key reference. Ensure organization_id exists.",
+        )
     return project
 
 

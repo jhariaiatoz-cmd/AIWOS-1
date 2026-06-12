@@ -3,6 +3,7 @@ from typing import List
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
@@ -18,6 +19,8 @@ async def create_agent(db: AsyncSession, body: AgentCreate) -> Agent:
         role=body.role,
         goal=body.goal,
         instructions=body.instructions,
+        provider=body.provider,
+        model=body.model,
         memory_config=body.memory_config,
         tools=body.tools,
         permissions=body.permissions,
@@ -25,8 +28,15 @@ async def create_agent(db: AsyncSession, body: AgentCreate) -> Agent:
         is_manager=body.is_manager,
     )
     db.add(agent)
-    await db.commit()
-    await db.refresh(agent)
+    try:
+        await db.commit()
+        await db.refresh(agent)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid foreign key reference. Ensure organization_id and department_id exist.",
+        )
     return agent
 
 
@@ -64,8 +74,15 @@ async def update_agent(
     agent = await get_agent(db, agent_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(agent, field, value)
-    await db.commit()
-    await db.refresh(agent)
+    try:
+        await db.commit()
+        await db.refresh(agent)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid foreign key reference. Ensure department_id exists.",
+        )
     return agent
 
 

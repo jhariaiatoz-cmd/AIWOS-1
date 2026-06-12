@@ -2,12 +2,18 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 ExecutionStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 
 
 class ExecuteTaskRequest(BaseModel):
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "agent_id": "<agent_uuid>",
+        }
+    })
+
     agent_id: Optional[uuid.UUID] = None
 
 

@@ -3,6 +3,7 @@ from typing import List
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -32,8 +33,15 @@ async def create_workflow(db: AsyncSession, body: WorkflowCreate) -> Workflow:
             )
         )
     db.add(workflow)
-    await db.commit()
-    await db.refresh(workflow)
+    try:
+        await db.commit()
+        await db.refresh(workflow)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid foreign key reference. Ensure organization_id and any agent_id in steps exist.",
+        )
     return await _load(db, workflow.id)
 
 
@@ -69,7 +77,14 @@ async def update_workflow(
     workflow = await get_workflow(db, workflow_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(workflow, field, value)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid foreign key reference. Ensure all referenced IDs exist.",
+        )
     return await _load(db, workflow_id)
 
 

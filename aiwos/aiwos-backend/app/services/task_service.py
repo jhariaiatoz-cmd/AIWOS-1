@@ -3,6 +3,7 @@ from typing import List
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.task import Task
@@ -26,8 +27,15 @@ async def create_task(
         due_date=body.due_date,
     )
     db.add(task)
-    await db.commit()
-    await db.refresh(task)
+    try:
+        await db.commit()
+        await db.refresh(task)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid foreign key reference. Ensure organization_id and project_id exist.",
+        )
     return task
 
 
@@ -65,8 +73,15 @@ async def update_task(
     task = await get_task(db, task_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(task, field, value)
-    await db.commit()
-    await db.refresh(task)
+    try:
+        await db.commit()
+        await db.refresh(task)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid foreign key reference. Ensure assigned_to agent_id exists.",
+        )
     return task
 
 
