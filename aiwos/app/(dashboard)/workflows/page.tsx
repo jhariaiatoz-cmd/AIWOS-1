@@ -10,6 +10,7 @@ import { WorkflowSearchBar } from "@/components/workflows/WorkflowSearchBar";
 import { WorkflowFilterBar } from "@/components/workflows/WorkflowFilterBar";
 import { WorkflowTable } from "@/components/workflows/WorkflowTable";
 import { SummaryCard } from "@/components/common/SummaryCard";
+import { CreateWorkflowDialog } from "@/components/workflows/CreateWorkflowDialog";
 import type { Workflow } from "@/lib/data/workflows";
 
 function mapWorkflowStatus(s: string): "Active" | "Inactive" | "Paused" {
@@ -40,6 +41,7 @@ export default function WorkflowsPage() {
   const { user, currentOrgId } = useAuthStore();
   const isGuest = user?.isGuest ?? true;
 
+  const [createOpen, setCreateOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
@@ -101,6 +103,7 @@ export default function WorkflowsPage() {
         </div>
         <button
           type="button"
+          onClick={() => setCreateOpen(true)}
           className="flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all hover:-translate-y-px focus:ring-2 focus:ring-primary/25 focus:outline-none"
           style={{ background: "var(--purple)", color: "white" }}
         >
@@ -161,6 +164,8 @@ export default function WorkflowsPage() {
       ) : (
         <WorkflowTable workflows={filteredWorkflows} />
       )}
+
+      <CreateWorkflowDialog open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>
   );
 }

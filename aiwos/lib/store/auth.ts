@@ -17,6 +17,7 @@ type AuthStore = {
   token: string | null;
   currentOrgId: string | null;
   isLoading: boolean;
+  setCurrentOrgId: (id: string | null) => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (
     firstName: string,
@@ -52,6 +53,8 @@ export const useAuthStore = create<AuthStore>()(
       token: null,
       currentOrgId: null,
       isLoading: false,
+
+      setCurrentOrgId: (id) => set({ currentOrgId: id }),
 
       signIn: async (email: string, password: string) => {
         set({ isLoading: true });

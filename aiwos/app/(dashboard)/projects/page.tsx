@@ -10,6 +10,7 @@ import { ProjectSearchBar } from "@/components/projects/ProjectSearchBar";
 import { ProjectFilterBar } from "@/components/projects/ProjectFilterBar";
 import { ProjectGrid } from "@/components/projects/ProjectGrid";
 import { SummaryCard } from "@/components/common/SummaryCard";
+import { CreateProjectDialog } from "@/components/projects/CreateProjectDialog";
 import type { Project } from "@/lib/data/projects";
 
 // Backend status → component status
@@ -38,6 +39,7 @@ export default function ProjectsPage() {
   const { user, currentOrgId } = useAuthStore();
   const isGuest = user?.isGuest ?? true;
 
+  const [createOpen, setCreateOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
 
@@ -96,6 +98,7 @@ export default function ProjectsPage() {
           </p>
         </div>
         <button
+          onClick={() => setCreateOpen(true)}
           className="flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-all hover:-translate-y-px"
           style={{ background: "var(--purple)" }}
         >
@@ -159,6 +162,8 @@ export default function ProjectsPage() {
           <ProjectGrid projects={filteredProjects} />
         </>
       )}
+
+      <CreateProjectDialog open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>
   );
 }

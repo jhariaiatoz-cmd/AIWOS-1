@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Plus } from "lucide-react";
 import { SettingsTabs, type SettingsTab } from "@/components/settings/SettingsTabs";
 import { InviteUserForm } from "@/components/settings/InviteUserForm";
 import { OrganizationSettingsForm } from "@/components/settings/OrganizationSettingsForm";
@@ -11,6 +12,7 @@ import {
   type SettingsUser,
 } from "@/components/settings/UserTable";
 import { SummaryCard } from "@/components/common/SummaryCard";
+import { CreateOrganizationDialog } from "@/components/organizations/CreateOrganizationDialog";
 
 const usersData: SettingsUser[] = [
   {
@@ -72,6 +74,7 @@ const roleSummaries = [
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("organization");
+  const [createOrgOpen, setCreateOrgOpen] = useState(false);
 
   const stats = useMemo(() => {
     return {
@@ -83,11 +86,23 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-full">
-      <div className="mb-8">
-        <h1 className="mb-2 text-2xl font-bold text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground">
-          Configure your workspace, team access, and system preferences.
-        </p>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="mb-2 text-2xl font-bold text-foreground">Settings</h1>
+          <p className="text-sm text-muted-foreground">
+            Configure your workspace, team access, and system preferences.
+          </p>
+        </div>
+        {activeTab === "organization" && (
+          <button
+            onClick={() => setCreateOrgOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-all hover:-translate-y-px"
+            style={{ background: "var(--purple)" }}
+          >
+            <Plus size={16} />
+            New Organisation
+          </button>
+        )}
       </div>
 
       <SettingsTabs activeTab={activeTab} onTabChange={setActiveTab} />
@@ -160,6 +175,8 @@ export default function SettingsPage() {
           description="Default language, notification preferences, and workspace display options will live here."
         />
       )}
+
+      <CreateOrganizationDialog open={createOrgOpen} onClose={() => setCreateOrgOpen(false)} />
     </div>
   );
 }

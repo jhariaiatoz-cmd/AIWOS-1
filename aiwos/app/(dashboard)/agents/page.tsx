@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { agentsData } from "@/lib/data/agents";
 import { agentApi, type AgentApiResponse } from "@/lib/api/agents";
 import { useAuthStore } from "@/lib/store/auth";
@@ -10,6 +10,7 @@ import { SearchBar } from "@/components/agents/SearchBar";
 import { FilterBar } from "@/components/agents/FilterBar";
 import { AgentTable } from "@/components/agents/AgentTable";
 import { EmptyState } from "@/components/common/EmptyState";
+import { CreateAgentDialog } from "@/components/agents/CreateAgentDialog";
 import type { Agent } from "@/lib/types";
 
 // Deterministic avatar colour derived from UUID
@@ -60,6 +61,7 @@ export default function AgentsPage() {
   const { user, currentOrgId } = useAuthStore();
   const isGuest = user?.isGuest ?? true;
 
+  const [createOpen, setCreateOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
@@ -101,12 +103,22 @@ export default function AgentsPage() {
 
   return (
     <div className="min-h-full">
-      <div className="mb-8">
-        <h1 className="mb-2 text-2xl font-bold text-foreground">Agents</h1>
-        <p className="text-sm text-muted-foreground">
-          Manage and monitor your AI agents, their status, performance, and
-          assignments.
-        </p>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="mb-2 text-2xl font-bold text-foreground">Agents</h1>
+          <p className="text-sm text-muted-foreground">
+            Manage and monitor your AI agents, their status, performance, and
+            assignments.
+          </p>
+        </div>
+        <button
+          onClick={() => setCreateOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-all hover:-translate-y-px"
+          style={{ background: "var(--purple)" }}
+        >
+          <Plus size={16} />
+          Create Agent
+        </button>
       </div>
 
       {!isGuest && !currentOrgId && (
@@ -164,6 +176,8 @@ export default function AgentsPage() {
           )}
         </>
       )}
+
+      <CreateAgentDialog open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>
   );
 }

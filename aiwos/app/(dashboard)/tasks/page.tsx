@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { tasksData } from "@/lib/data/tasks";
 import { taskApi, type TaskApiResponse } from "@/lib/api/tasks";
 import { projectApi } from "@/lib/api/projects";
@@ -12,6 +12,7 @@ import { TaskFilterBar } from "@/components/tasks/TaskFilterBar";
 import { TaskTable } from "@/components/tasks/TaskTable";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SummaryCard } from "@/components/common/SummaryCard";
+import { CreateTaskDialog } from "@/components/tasks/CreateTaskDialog";
 import type { Task, TaskStatus, TaskPriority } from "@/lib/data/tasks";
 
 function mapTaskStatus(s: string): TaskStatus {
@@ -56,6 +57,7 @@ export default function TasksPage() {
   const { user, currentOrgId } = useAuthStore();
   const isGuest = user?.isGuest ?? true;
 
+  const [createOpen, setCreateOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
   const [selectedPriority, setSelectedPriority] = useState("");
@@ -119,11 +121,21 @@ export default function TasksPage() {
 
   return (
     <div className="min-h-full">
-      <div className="mb-8">
-        <h1 className="mb-2 text-2xl font-bold text-foreground">Tasks</h1>
-        <p className="text-sm text-muted-foreground">
-          View, create, and manage tasks assigned to your AI agents.
-        </p>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="mb-2 text-2xl font-bold text-foreground">Tasks</h1>
+          <p className="text-sm text-muted-foreground">
+            View, create, and manage tasks assigned to your AI agents.
+          </p>
+        </div>
+        <button
+          onClick={() => setCreateOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-all hover:-translate-y-px"
+          style={{ background: "var(--purple)" }}
+        >
+          <Plus size={16} />
+          Create Task
+        </button>
       </div>
 
       {!isGuest && !currentOrgId && (
@@ -192,6 +204,8 @@ export default function TasksPage() {
           )}
         </>
       )}
+
+      <CreateTaskDialog open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>
   );
 }
