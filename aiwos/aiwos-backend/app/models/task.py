@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.project import Project
     from app.models.agent import Agent
     from app.models.execution_log import ExecutionLog
+    from app.models.task_execution import TaskExecution
 
 
 class Task(Base, TimestampMixin, SoftDeleteMixin):
@@ -80,4 +81,9 @@ class Task(Base, TimestampMixin, SoftDeleteMixin):
     execution_logs: Mapped[List["ExecutionLog"]] = relationship(
         "ExecutionLog",
         back_populates="task"
+    )
+    executions: Mapped[List["TaskExecution"]] = relationship(
+        "TaskExecution",
+        back_populates="task",
+        cascade="all, delete-orphan"
     )

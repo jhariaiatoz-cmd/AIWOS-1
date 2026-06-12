@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
+    # LLM provider settings
+    OPENAI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+
     # Database settings
     DATABASE_URL: Optional[str] = None
     ASYNC_DATABASE_URL: Optional[str] = None

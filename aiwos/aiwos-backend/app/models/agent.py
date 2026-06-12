@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.models.workflow_step import WorkflowStep
     from app.models.agent_metric import AgentMetric
     from app.models.execution_log import ExecutionLog
+    from app.models.task_execution import TaskExecution
 
 
 class Agent(Base, TimestampMixin, SoftDeleteMixin):
@@ -53,6 +54,8 @@ class Agent(Base, TimestampMixin, SoftDeleteMixin):
         nullable=False
     )
     is_manager: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Relationships
     organization: Mapped["Organization"] = relationship(
@@ -88,6 +91,11 @@ class Agent(Base, TimestampMixin, SoftDeleteMixin):
     )
     execution_logs: Mapped[List["ExecutionLog"]] = relationship(
         "ExecutionLog",
+        back_populates="agent",
+        cascade="all, delete-orphan"
+    )
+    task_executions: Mapped[List["TaskExecution"]] = relationship(
+        "TaskExecution",
         back_populates="agent",
         cascade="all, delete-orphan"
     )

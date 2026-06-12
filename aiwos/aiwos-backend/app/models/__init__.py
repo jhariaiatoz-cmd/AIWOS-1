@@ -17,6 +17,8 @@ from app.models.knowledge_file import KnowledgeFile
 from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.execution_log import ExecutionLog
 from app.models.integration import Integration
+from app.models.task_execution import TaskExecution
+from app.models.provider_config import ProviderConfig
 
 __all__ = [
     "Base",
@@ -38,4 +40,6 @@ __all__ = [
     "KnowledgeChunk",
     "ExecutionLog",
     "Integration",
+    "TaskExecution",
+    "ProviderConfig",
 ]

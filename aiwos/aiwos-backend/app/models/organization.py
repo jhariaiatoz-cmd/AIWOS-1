@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from app.models.execution_log import ExecutionLog
     from app.models.agent_metric import AgentMetric
     from app.models.integration import Integration
+    from app.models.task_execution import TaskExecution
+    from app.models.provider_config import ProviderConfig
 
 
 class Organization(Base, TimestampMixin, SoftDeleteMixin):
@@ -100,6 +102,16 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     )
     integrations: Mapped[List["Integration"]] = relationship(
         "Integration",
+        back_populates="organization",
+        cascade="all, delete-orphan"
+    )
+    task_executions: Mapped[List["TaskExecution"]] = relationship(
+        "TaskExecution",
+        back_populates="organization",
+        cascade="all, delete-orphan"
+    )
+    provider_configs: Mapped[List["ProviderConfig"]] = relationship(
+        "ProviderConfig",
         back_populates="organization",
         cascade="all, delete-orphan"
     )

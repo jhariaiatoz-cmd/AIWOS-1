@@ -38,6 +38,7 @@ fastapi==0.115.0
 filelock==3.29.3
 frozenlist==1.8.0
 fsspec==2026.4.0
+google-genai>=1.0.0
 gotrue>=2.12.4
 greenlet==3.5.1
 h11==0.16.0
