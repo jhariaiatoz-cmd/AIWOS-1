@@ -48,7 +48,7 @@ hf-xet==1.5.1
 hpack==4.1.0
 httpcore==1.0.9
 httptools==0.8.0
-httpx==0.28.1
+httpx==0.27.2
 huggingface_hub==1.18.0
 hyperframe==6.1.0
 idna==3.18

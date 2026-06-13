@@ -16,6 +16,7 @@ from app.services.organization_service import (
     list_organizations,
     update_organization,
 )
+from app.services.provisioning_service import provision_organization
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
@@ -56,6 +57,15 @@ async def update_one(
     _: User = Depends(get_current_user),
 ) -> Organization:
     return await update_organization(db, org_id, body)
+
+
+@router.post("/{org_id}/provision", status_code=status.HTTP_204_NO_CONTENT)
+async def provision_one(
+    org_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> None:
+    await provision_organization(db, org_id)
 
 
 @router.delete("/{org_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -26,6 +26,13 @@ async def create_organization(db: AsyncSession, body: OrganizationCreate) -> Org
     db.add(org)
     await db.commit()
     await db.refresh(org)
+
+    try:
+        from app.services.provisioning_service import provision_organization
+        await provision_organization(db, org.id)
+    except Exception:
+        pass  # provisioning failure must not block org creation
+
     return org
 
 

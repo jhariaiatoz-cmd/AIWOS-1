@@ -12,7 +12,7 @@ from app.models.task import Task
 from app.models.task_execution import TaskExecution
 from app.services.llm_provider_service import complete as llm_complete
 
-_DEFAULT_MODEL = "gpt-4o-mini"
+_DEFAULT_MODEL = "gemini-2.5-flash"
 
 # ---------------------------------------------------------------------------
 # Public API

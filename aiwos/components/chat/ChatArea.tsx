@@ -9,6 +9,7 @@ interface ChatAreaProps {
   messages: Message[];
   onBack?: () => void;
   onSend: (conversationId: string, content: string) => void;
+  isExecuting?: boolean;
 }
 
 function StatusLabel({ status }: { status: AgentStatus }) {
@@ -56,6 +57,7 @@ export function ChatArea({
   messages,
   onBack,
   onSend,
+  isExecuting = false,
 }: ChatAreaProps) {
   const [draft, setDraft] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -202,6 +204,36 @@ export function ChatArea({
               </div>
             );
           })}
+          {isExecuting && conversation && (
+            <div className="flex items-end gap-2">
+              <div
+                className="mb-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                style={{ background: conversation.agentColor }}
+              >
+                {conversation.agentInitials}
+              </div>
+              <div
+                className="flex items-center gap-1 rounded-2xl px-3.5 py-3"
+                style={{
+                  background: "var(--elevated)",
+                  borderBottomLeftRadius: "4px",
+                }}
+              >
+                <span
+                  className="h-1.5 w-1.5 animate-bounce rounded-full"
+                  style={{ background: "var(--faint)", animationDelay: "0ms" }}
+                />
+                <span
+                  className="h-1.5 w-1.5 animate-bounce rounded-full"
+                  style={{ background: "var(--faint)", animationDelay: "150ms" }}
+                />
+                <span
+                  className="h-1.5 w-1.5 animate-bounce rounded-full"
+                  style={{ background: "var(--faint)", animationDelay: "300ms" }}
+                />
+              </div>
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
       </div>
@@ -223,16 +255,21 @@ export function ChatArea({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
+            placeholder={
+              isExecuting
+                ? "Agent is thinking…"
+                : "Type a message… (Enter to send, Shift+Enter for newline)"
+            }
             rows={1}
-            className="max-h-32 flex-1 resize-none bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
+            disabled={isExecuting}
+            className="max-h-32 flex-1 resize-none bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-50"
             style={{ lineHeight: "1.5" }}
             aria-label="Message input"
           />
           <button
             type="button"
             onClick={handleSend}
-            disabled={!draft.trim()}
+            disabled={!draft.trim() || isExecuting}
             className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white transition-all hover:-translate-y-px disabled:opacity-30 disabled:hover:translate-y-0"
             style={{ background: "var(--purple)" }}
             aria-label="Send message"
@@ -240,9 +277,11 @@ export function ChatArea({
             <Send size={14} />
           </button>
         </div>
-        <p className="mt-1.5 text-center text-[10px]" style={{ color: "var(--faint)" }}>
-          This is a demo — messages are not stored or sent.
-        </p>
+        {isExecuting && (
+          <p className="mt-1.5 text-center text-[10px]" style={{ color: "var(--faint)" }}>
+            Agent is processing your request…
+          </p>
+        )}
       </div>
     </div>
   );
