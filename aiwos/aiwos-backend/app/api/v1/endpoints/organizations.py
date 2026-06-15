@@ -25,9 +25,9 @@ router = APIRouter(prefix="/organizations", tags=["organizations"])
 async def create(
     body: OrganizationCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> Organization:
-    return await create_organization(db, body)
+    return await create_organization(db, body, creator_id=current_user.id)
 
 
 @router.get("", response_model=List[OrganizationResponse])
@@ -35,9 +35,9 @@ async def list_all(
     skip: int = 0,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> List[Organization]:
-    return await list_organizations(db, skip=skip, limit=limit)
+    return await list_organizations(db, user_id=current_user.id, skip=skip, limit=limit)
 
 
 @router.get("/{org_id}", response_model=OrganizationResponse)

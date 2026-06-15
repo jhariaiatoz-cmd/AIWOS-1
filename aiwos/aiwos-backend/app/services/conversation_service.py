@@ -14,8 +14,8 @@ from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.schemas.conversation import ConversationCreate
+from app.services.agent_router import log_routing, route as route_agent
 from app.services.llm_provider_service import complete as llm_complete
-from app.services.provisioning_service import match_agent
 
 _HISTORY_WINDOW = 10   # how many prior messages to include as context
 _FALLBACK_MODEL = "gemini-2.5-flash"
@@ -127,9 +127,13 @@ async def create_conversation(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="No agents found for this organization. Create an agent first.",
             )
-        agent = match_agent(agents, body.prompt)
+        agent, intent, reason = route_agent(agents, body.prompt)
+        log_routing(body.prompt, agent, intent, reason)
         if agent is None:
-            agent = agents[0]
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No active agents found for this organization.",
+            )
     else:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -257,6 +261,7 @@ async def list_conversations(
 ) -> List[Conversation]:
     q = (
         select(Conversation)
+        .options(selectinload(Conversation.messages))
         .where(
             Conversation.organization_id == organization_id,
             Conversation.deleted_at.is_(None),

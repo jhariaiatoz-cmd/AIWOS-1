@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # JWT settings
     SECRET_KEY: str = "change-me-in-production-use-a-long-random-string"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
     # LLM provider settings
     OPENAI_API_KEY: Optional[str] = None

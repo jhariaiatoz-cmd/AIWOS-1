@@ -1,15 +1,20 @@
 import uuid
-from typing import List
+from typing import List, Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.organization import Organization
+from app.models.organization_member import OrganizationMember
 from app.schemas.organization import OrganizationCreate, OrganizationUpdate
 
 
-async def create_organization(db: AsyncSession, body: OrganizationCreate) -> Organization:
+async def create_organization(
+    db: AsyncSession,
+    body: OrganizationCreate,
+    creator_id: Optional[uuid.UUID] = None,
+) -> Organization:
     existing = await db.execute(
         select(Organization).where(
             Organization.slug == body.slug,
@@ -26,6 +31,16 @@ async def create_organization(db: AsyncSession, body: OrganizationCreate) -> Org
     db.add(org)
     await db.commit()
     await db.refresh(org)
+
+    if creator_id is not None:
+        membership = OrganizationMember(
+            id=uuid.uuid4(),
+            organization_id=org.id,
+            user_id=creator_id,
+            role="admin",
+        )
+        db.add(membership)
+        await db.commit()
 
     try:
         from app.services.provisioning_service import provision_organization
@@ -54,12 +69,17 @@ async def get_organization(db: AsyncSession, org_id: uuid.UUID) -> Organization:
 
 async def list_organizations(
     db: AsyncSession,
+    user_id: uuid.UUID,
     skip: int = 0,
     limit: int = 50,
 ) -> List[Organization]:
     result = await db.execute(
         select(Organization)
-        .where(Organization.deleted_at.is_(None))
+        .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
+        .where(
+            Organization.deleted_at.is_(None),
+            OrganizationMember.user_id == user_id,
+        )
         .order_by(Organization.created_at.desc())
         .offset(skip)
         .limit(limit)

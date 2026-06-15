@@ -18,3 +18,22 @@ apiClient.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// On 401, clear auth state and redirect to /auth.
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (
+      typeof window !== "undefined" &&
+      axios.isAxiosError(error) &&
+      error.response?.status === 401
+    ) {
+      // Lazy-import to avoid circular dependency at module load time.
+      import("@/lib/store/auth").then(({ useAuthStore }) => {
+        useAuthStore.getState().signOut();
+        window.location.replace("/auth");
+      });
+    }
+    return Promise.reject(error);
+  }
+);

@@ -109,8 +109,19 @@ export const useAuthStore = create<AuthStore>()(
           // 1. Register account
           await authApi.register(email, password, full_name);
 
-          // 2. Login to obtain token
-          const { access_token } = await authApi.login(email, password);
+          // 2. Login to obtain token — if this fails the user was created but
+          //    we cannot complete setup. Throw a typed error so the UI can
+          //    redirect to the sign-in tab instead of leaving the form broken.
+          let access_token: string;
+          try {
+            const result = await authApi.login(email, password);
+            access_token = result.access_token;
+          } catch {
+            set({ isLoading: false });
+            const err = new Error("Account created. Please sign in to continue.");
+            (err as Error & { redirectToSignIn: boolean }).redirectToSignIn = true;
+            throw err;
+          }
           localStorage.setItem("aiwos-token", access_token);
 
           // 3. Fetch profile
@@ -130,7 +141,7 @@ export const useAuthStore = create<AuthStore>()(
           }
 
           set({
-            token: access_token,
+            token: access_token!,
             currentOrgId: org.id,
             user: {
               id: me.id,

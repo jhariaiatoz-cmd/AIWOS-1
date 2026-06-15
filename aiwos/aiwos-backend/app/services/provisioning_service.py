@@ -13,40 +13,46 @@ from app.models.agent import Agent
 from app.models.department import Department
 from app.models.project import Project
 
-# ── Keyword lists used by the agent-matching heuristic ───────────────────────
-# Exposed so conversation_service can import them without re-defining.
+# ── Keyword lists (legacy — agent_router.py is now authoritative) ─────────────
 AGENT_KEYWORDS: dict[str, list[str]] = {
     "Full Stack Engineer": [
-        "code", "app", "application", "build", "develop", "feature",
-        "bug", "fix", "deploy", "full stack", "fullstack", "web", "software",
+        "react", "vue", "angular", "javascript", "typescript", "python",
+        "fastapi", "flask", "django", "code", "coding", "app", "build",
+        "develop", "feature", "debug", "refactor", "full stack", "web",
+        "software", "frontend", "nodejs", "component", "script",
     ],
     "Backend Engineer": [
         "api", "server", "database", "backend", "microservice", "endpoint",
-        "service", "query", "sql", "cache", "performance",
+        "sql", "cache", "performance", "graphql", "rest", "migration",
     ],
     "UI/UX Designer": [
         "design", "ui", "ux", "interface", "wireframe", "mockup",
-        "user experience", "prototype", "layout", "visual", "figma",
+        "user experience", "prototype", "layout", "visual", "figma", "figma",
     ],
     "HR Manager": [
-        "hire", "recruit", "employee", "hr", "onboard", "interview",
-        "talent", "people", "team", "culture", "performance review",
+        "hire", "hiring", "recruit", "employee", "hr", "onboard", "interview",
+        "talent", "staff", "culture", "performance review", "headcount",
     ],
     "Sales Manager": [
-        "sales", "revenue", "deal", "prospect", "pipeline",
-        "crm", "quota", "close", "lead", "conversion", "customer",
+        "sales", "lead", "deal", "prospect", "pipeline", "crm", "quota",
+        "close", "outbound", "outreach", "conversion", "b2b",
     ],
     "Marketing Strategist": [
-        "marketing", "campaign", "brand", "content", "social",
-        "seo", "email", "growth", "ads", "audience", "engagement",
+        "marketing", "campaign", "brand", "content", "seo", "social media",
+        "email marketing", "growth", "ads", "audience", "engagement",
     ],
     "Research Analyst": [
-        "research", "analyze", "analysis", "report", "data", "insights",
-        "market", "study", "investigate", "findings", "competitive",
+        "research", "analyze", "analysis", "report", "insights", "market",
+        "industry", "study", "investigate", "findings", "competitive",
+        "trends", "ev", "benchmark",
     ],
     "Support Specialist": [
-        "support", "help", "issue", "ticket", "problem",
-        "troubleshoot", "assist", "resolve", "complaint",
+        "support", "issue", "ticket", "problem", "troubleshoot",
+        "assist", "resolve", "complaint", "refund",
+    ],
+    "Finance Manager": [
+        "finance", "budget", "forecast", "financial", "accounting", "expense",
+        "profit", "roi", "cashflow", "p&l", "investment", "runway",
     ],
 }
 
@@ -57,6 +63,7 @@ _DEPARTMENTS = [
     {"name": "Marketing",    "description": "Brand awareness, content, and growth"},
     {"name": "Research",     "description": "Data analysis, market research, and insights"},
     {"name": "Support",      "description": "Customer support and issue resolution"},
+    {"name": "Finance",      "description": "Financial planning, budgeting, and forecasting"},
 ]
 
 _AGENTS = [
@@ -174,6 +181,20 @@ _AGENTS = [
         "provider": "gemini",
         "model": "gemini-2.5-flash",
     },
+    {
+        "name": "Finance Manager",
+        "role": "Finance Manager",
+        "department": "Finance",
+        "goal": "Drive financial health through rigorous planning, budgeting, and forecasting.",
+        "instructions": (
+            "You are an experienced finance manager. Help with budget creation, financial "
+            "modelling, revenue forecasting, cost analysis, P&L interpretation, cash flow "
+            "planning, ROI calculations, and investor reporting. Present numbers clearly "
+            "with assumptions stated, and flag risks where relevant."
+        ),
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+    },
 ]
 
 
@@ -255,25 +276,10 @@ async def provision_organization(db: AsyncSession, org_id: uuid.UUID) -> None:
 
 def match_agent(agents: list[Agent], prompt: str) -> Optional[Agent]:
     """
-    Score active agents against the prompt using keyword matching.
-    Falls back to the first active agent if no keywords match.
+    Delegate to agent_router.route for intent-based routing.
+    Kept for backwards compatibility; conversation_service should call
+    agent_router.route directly for full logging support.
     """
-    prompt_lower = prompt.lower()
-    active = [a for a in agents if a.status in ("Active", "Created")]
-    if not active:
-        return agents[0] if agents else None
-
-    best: Optional[Agent] = None
-    best_score = -1
-
-    for agent in active:
-        keywords = AGENT_KEYWORDS.get(agent.name, [])
-        score = sum(1 for kw in keywords if kw in prompt_lower)
-        # Bonus: agent's role or name mentioned explicitly
-        if agent.role.lower() in prompt_lower or agent.name.lower() in prompt_lower:
-            score += 3
-        if score > best_score:
-            best_score = score
-            best = agent
-
-    return best if best is not None else active[0]
+    from app.services.agent_router import route  # local import avoids circular deps
+    agent, _intent, _reason = route(agents, prompt)
+    return agent
