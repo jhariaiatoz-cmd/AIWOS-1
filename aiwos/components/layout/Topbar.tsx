@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { Search, Bell, Settings, Plus } from "lucide-react";
 import Link from "next/link";
 import { useId } from "react";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -63,6 +64,9 @@ export function Topbar() {
             placeholder="Search anything..."
           />
         </div>
+
+        {/* Theme toggle */}
+        <ThemeToggle />
 
         {/* Notifications */}
         <button
