@@ -131,7 +131,7 @@ function FieldGroup({
     <div className="mb-4">
       <Label
         className="mb-1.5 block text-xs font-medium"
-        style={{ color: "var(--text-secondary, #9090b0)" }}
+        style={{ color: "var(--muted-foreground)" }}
       >
         {label}
       </Label>
@@ -246,7 +246,7 @@ function SignInForm({ onSuccess, note }: { onSuccess: () => void; note?: string 
     <form onSubmit={handleSubmit} noValidate>
       <div className="mb-6">
         <h2 className="text-2xl font-bold">Welcome back</h2>
-        <p className="mt-1 text-sm" style={{ color: "var(--text-secondary, #9090b0)" }}>
+        <p className="mt-1 text-sm" style={{ color: "var(--muted-foreground)" }}>
           Sign in to your AIWOS workspace
         </p>
       </div>
@@ -283,7 +283,7 @@ function SignInForm({ onSuccess, note }: { onSuccess: () => void; note?: string 
       </FieldGroup>
 
       <div className="mb-5 flex items-center justify-between">
-        <label className="flex cursor-pointer items-center gap-2 text-xs" style={{ color: "var(--text-secondary, #9090b0)" }}>
+        <label className="flex cursor-pointer items-center gap-2 text-xs" style={{ color: "var(--muted-foreground)" }}>
           <input
             type="checkbox"
             checked={remember}
@@ -508,7 +508,7 @@ function SignUpForm({
           <Check size={28} style={{ color: "var(--green)" }} />
         </div>
         <h2 className="mb-2 text-xl font-bold">You&apos;re all set!</h2>
-        <p className="mb-6 text-sm" style={{ color: "var(--text-secondary, #9090b0)" }}>
+        <p className="mb-6 text-sm" style={{ color: "var(--muted-foreground)" }}>
           Your AI workforce is being initialized.
         </p>
         <div
@@ -541,7 +541,7 @@ function SignUpForm({
         <>
           <div className="mb-5">
             <h2 className="text-2xl font-bold">Create your account</h2>
-            <p className="mt-1 text-sm" style={{ color: "var(--text-secondary, #9090b0)" }}>
+            <p className="mt-1 text-sm" style={{ color: "var(--muted-foreground)" }}>
               Start your 14-day free trial — no credit card required.
             </p>
           </div>
@@ -593,7 +593,7 @@ function SignUpForm({
             <PasswordStrength password={data.password} />
           </FieldGroup>
 
-          <label className="mb-5 flex cursor-pointer items-start gap-2 text-xs" style={{ color: "var(--text-secondary, #9090b0)" }}>
+          <label className="mb-5 flex cursor-pointer items-start gap-2 text-xs" style={{ color: "var(--muted-foreground)" }}>
             <input
               type="checkbox"
               checked={terms}
@@ -629,14 +629,14 @@ function SignUpForm({
             type="button"
             onClick={() => { setError(""); setStep(1); }}
             className="mb-4 flex items-center gap-1.5 text-xs transition-colors hover:text-foreground"
-            style={{ color: "var(--text-secondary, #9090b0)" }}
+            style={{ color: "var(--muted-foreground)" }}
           >
             <ArrowLeft size={13} /> Back
           </button>
 
           <div className="mb-5">
             <h2 className="text-2xl font-bold">Set up your organization</h2>
-            <p className="mt-1 text-sm" style={{ color: "var(--text-secondary, #9090b0)" }}>
+            <p className="mt-1 text-sm" style={{ color: "var(--muted-foreground)" }}>
               Tell us about your company.
             </p>
           </div>
@@ -657,7 +657,7 @@ function SignUpForm({
           </FieldGroup>
 
           <div className="mb-5">
-            <Label className="mb-2 block text-xs font-medium" style={{ color: "var(--text-secondary, #9090b0)" }}>
+            <Label className="mb-2 block text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
               Organization Type
             </Label>
             <div className="grid grid-cols-2 gap-2">
@@ -696,14 +696,14 @@ function SignUpForm({
             type="button"
             onClick={() => setStep(2)}
             className="mb-4 flex items-center gap-1.5 text-xs transition-colors hover:text-foreground"
-            style={{ color: "var(--text-secondary, #9090b0)" }}
+            style={{ color: "var(--muted-foreground)" }}
           >
             <ArrowLeft size={13} /> Back
           </button>
 
           <div className="mb-5">
             <h2 className="text-2xl font-bold">Choose your plan</h2>
-            <p className="mt-1 text-sm" style={{ color: "var(--text-secondary, #9090b0)" }}>
+            <p className="mt-1 text-sm" style={{ color: "var(--muted-foreground)" }}>
               All plans include a 14-day free trial.
             </p>
           </div>
@@ -747,7 +747,7 @@ function SignUpForm({
             style={{
               background: "rgba(124,58,237,0.06)",
               borderColor: "rgba(124,58,237,0.2)",
-              color: "var(--text-secondary, #9090b0)",
+              color: "var(--muted-foreground)",
             }}
           >
             <span className="shrink-0 text-base">✨</span>
@@ -801,7 +801,7 @@ function GuestPanel({ onSuccess }: { onSuccess: () => void }) {
         <UserCheck size={28} style={{ color: "var(--purple)" }} />
       </div>
       <h2 className="mb-2 text-2xl font-bold">Try AIWOS instantly</h2>
-      <p className="mb-2 text-sm" style={{ color: "var(--text-secondary, #9090b0)" }}>
+      <p className="mb-2 text-sm" style={{ color: "var(--muted-foreground)" }}>
         Explore the full dashboard with demo data — no account needed.
       </p>
       <p className="mb-8 text-xs" style={{ color: "var(--faint)" }}>

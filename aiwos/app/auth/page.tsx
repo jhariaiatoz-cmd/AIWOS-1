@@ -93,7 +93,7 @@ export default function AuthPage() {
               Ready to Work.
             </span>
           </h1>
-          <p className="mb-9 text-sm leading-relaxed" style={{ color: "var(--text-secondary, #9090b0)", maxWidth: 380 }}>
+          <p className="mb-9 text-sm leading-relaxed" style={{ color: "var(--muted-foreground)", maxWidth: 380 }}>
             Deploy AI agents across every department. Automate workflows, generate software,
             and scale your operations — all from one platform.
           </p>
@@ -112,7 +112,7 @@ export default function AuthPage() {
                   </div>
                   <div>
                     <div className="text-sm font-semibold">{f.title}</div>
-                    <div className="mt-0.5 text-[13px] leading-snug" style={{ color: "var(--text-secondary, #9090b0)" }}>
+                    <div className="mt-0.5 text-[13px] leading-snug" style={{ color: "var(--muted-foreground)" }}>
                       {f.desc}
                     </div>
                   </div>

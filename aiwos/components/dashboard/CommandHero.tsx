@@ -78,7 +78,7 @@ export function CommandHero() {
           className="w-full rounded-2xl border px-4 py-3.5 pr-14 text-sm outline-none transition-all focus:shadow-[0_0_0_3px_var(--accent-glow)] focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
           style={{
             background: "var(--card)",
-            borderColor: error ? "#ef4444" : "var(--border)",
+            borderColor: error ? "var(--destructive)" : "var(--border)",
             color: "var(--foreground)",
           }}
           placeholder="What would you like your workforce to do today?"

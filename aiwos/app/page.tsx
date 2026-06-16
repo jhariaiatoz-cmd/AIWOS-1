@@ -170,7 +170,7 @@ export default function LandingPage() {
             <button
               key={l}
               className="rounded-lg px-3 py-1.5 text-sm transition-colors hover:bg-white/4 hover:text-foreground"
-              style={{ color: "var(--text-secondary, #9090b0)" }}
+              style={{ color: "var(--muted-foreground)" }}
             >
               {l} ▾
             </button>
@@ -178,7 +178,7 @@ export default function LandingPage() {
           <a
             href="#pricing"
             className="rounded-lg px-3 py-1.5 text-sm transition-colors hover:bg-white/4 hover:text-foreground"
-            style={{ color: "var(--text-secondary, #9090b0)" }}
+            style={{ color: "var(--muted-foreground)" }}
           >
             Pricing
           </a>
@@ -191,7 +191,7 @@ export default function LandingPage() {
             className="rounded-lg border px-4 py-1.5 text-sm font-medium transition-all hover:border-white/20 hover:text-foreground"
             style={{
               borderColor: "var(--border)",
-              color: "var(--text-secondary, #9090b0)",
+              color: "var(--muted-foreground)",
             }}
           >
             Sign In
@@ -263,7 +263,7 @@ export default function LandingPage() {
           {/* Subtitle */}
           <p
             className="mx-auto mb-10 max-w-xl text-lg leading-relaxed"
-            style={{ color: "var(--text-secondary, #9090b0)" }}
+            style={{ color: "var(--muted-foreground)" }}
           >
             AIWOS helps you build, manage, and scale a team of AI agents that work together to
             achieve your business goals — across every department.
@@ -281,7 +281,7 @@ export default function LandingPage() {
             <Link
               href="/dashboard"
               className="flex items-center gap-2 rounded-xl border px-7 py-3.5 text-base font-medium transition-all hover:border-white/20 hover:text-foreground"
-              style={{ borderColor: "var(--border)", color: "var(--text-secondary, #9090b0)" }}
+              style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}
             >
               ▶ Watch Video
             </Link>
@@ -382,7 +382,7 @@ export default function LandingPage() {
             >
               {s.value}
             </div>
-            <div className="mt-1 text-sm" style={{ color: "var(--text-secondary, #9090b0)" }}>
+            <div className="mt-1 text-sm" style={{ color: "var(--muted-foreground)" }}>
               {s.label}
             </div>
           </div>
@@ -403,7 +403,7 @@ export default function LandingPage() {
             <br />
             an AI-powered organization
           </h2>
-          <p className="mx-auto max-w-lg text-base" style={{ color: "var(--text-secondary, #9090b0)" }}>
+          <p className="mx-auto max-w-lg text-base" style={{ color: "var(--muted-foreground)" }}>
             From creating individual agents to orchestrating entire departments — AIWOS handles
             the full lifecycle.
           </p>
@@ -428,7 +428,7 @@ export default function LandingPage() {
                   <Icon size={22} style={{ color: f.color.text }} />
                 </div>
                 <div className="mb-2 text-base font-semibold">{f.title}</div>
-                <div className="text-sm leading-relaxed" style={{ color: "var(--text-secondary, #9090b0)" }}>
+                <div className="text-sm leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
                   {f.desc}
                 </div>
               </div>
@@ -451,7 +451,7 @@ export default function LandingPage() {
             <br />
             Infinite capability.
           </h2>
-          <p className="mb-12 max-w-lg text-base" style={{ color: "var(--text-secondary, #9090b0)" }}>
+          <p className="mb-12 max-w-lg text-base" style={{ color: "var(--muted-foreground)" }}>
             Each department comes pre-loaded with a Manager agent and specialized Employee agents,
             ready to execute from day one.
           </p>
@@ -487,7 +487,7 @@ export default function LandingPage() {
                         style={{
                           background: "rgba(255,255,255,0.03)",
                           borderColor: "var(--border-light)",
-                          color: "var(--text-secondary, #9090b0)",
+                          color: "var(--muted-foreground)",
                         }}
                       >
                         <span
@@ -525,7 +525,7 @@ export default function LandingPage() {
             >
               <p
                 className="mb-5 text-sm leading-relaxed"
-                style={{ color: "var(--text-secondary, #9090b0)" }}
+                style={{ color: "var(--muted-foreground)" }}
               >
                 &ldquo;{t.quote}&rdquo;
               </p>
@@ -559,7 +559,7 @@ export default function LandingPage() {
               Pricing
             </div>
             <h2 className="mb-4 text-4xl font-extrabold">Simple, transparent pricing</h2>
-            <p className="mx-auto max-w-md text-base" style={{ color: "var(--text-secondary, #9090b0)" }}>
+            <p className="mx-auto max-w-md text-base" style={{ color: "var(--muted-foreground)" }}>
               Start free for 14 days. No credit card required.
             </p>
           </div>
@@ -603,12 +603,12 @@ export default function LandingPage() {
                 )}
                 <div
                   className="mb-1 text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: p.featured ? "var(--purple)" : "var(--text-secondary, #9090b0)" }}
+                  style={{ color: p.featured ? "var(--purple)" : "var(--muted-foreground)" }}
                 >
                   {p.name}
                 </div>
                 <div className="mb-1 text-4xl font-extrabold">{p.price}<span className="text-base font-normal" style={{ color: "var(--faint)" }}>{p.price !== "Custom" && "/mo"}</span></div>
-                <div className="mb-6 text-sm" style={{ color: "var(--text-secondary, #9090b0)" }}>{p.desc}</div>
+                <div className="mb-6 text-sm" style={{ color: "var(--muted-foreground)" }}>{p.desc}</div>
                 <ul className="mb-8 flex flex-col gap-2.5">
                   {p.features.map((f) => (
                     <li key={f} className="flex items-center gap-2 text-sm">
@@ -648,7 +648,7 @@ export default function LandingPage() {
             AI workforce?
           </span>
         </h2>
-        <p className="mx-auto mb-10 max-w-md text-base" style={{ color: "var(--text-secondary, #9090b0)" }}>
+        <p className="mx-auto mb-10 max-w-md text-base" style={{ color: "var(--muted-foreground)" }}>
           Join 2,400+ companies already using AIWOS to automate their operations.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3">
@@ -662,7 +662,7 @@ export default function LandingPage() {
           <Link
             href="/auth"
             className="rounded-xl border px-8 py-4 text-base font-medium transition-all hover:border-white/20 hover:text-foreground"
-            style={{ borderColor: "var(--border)", color: "var(--text-secondary, #9090b0)" }}
+            style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}
           >
             Sign In
           </Link>
@@ -683,7 +683,7 @@ export default function LandingPage() {
                 </div>
                 <span className="text-[17px] font-bold">AIWOS</span>
               </div>
-              <p className="max-w-xs text-sm leading-relaxed" style={{ color: "var(--text-secondary, #9090b0)" }}>
+              <p className="max-w-xs text-sm leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
                 The AI Workforce Operating System. Build, manage, and scale your AI team across
                 every department.
               </p>
@@ -696,7 +696,7 @@ export default function LandingPage() {
                     <li key={l}>
                       <span
                         className="cursor-pointer text-sm transition-colors hover:text-foreground"
-                        style={{ color: "var(--text-secondary, #9090b0)" }}
+                        style={{ color: "var(--muted-foreground)" }}
                       >
                         {l}
                       </span>

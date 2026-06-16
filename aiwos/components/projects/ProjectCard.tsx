@@ -109,7 +109,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
                 background: "var(--border)",
                 borderColor: "var(--card)",
                 marginLeft: "-8px",
-                color: "var(--text-secondary)",
+                color: "var(--muted-foreground)",
               }}
               title={`+${project.agents.length - 3} more`}
             >
