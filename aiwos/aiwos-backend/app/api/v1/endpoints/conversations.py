@@ -1,7 +1,7 @@
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
@@ -21,13 +21,14 @@ router = APIRouter(tags=["conversations"])
 @router.post("/conversations", response_model=ConversationResponse, status_code=201)
 async def create_conversation(
     body: ConversationCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ConversationResponse:
     # Inject authenticated user_id if caller omitted it
     if body.user_id is None:
         body = body.model_copy(update={"user_id": current_user.id})
-    conv = await conversation_service.create_conversation(db, body)
+    conv = await conversation_service.create_conversation(db, body, background_tasks)
     return conv
 
 
@@ -68,6 +69,7 @@ async def get_conversation(
 async def send_message(
     conversation_id: uuid.UUID,
     body: SendMessageRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> List[MessageResponse]:
@@ -76,6 +78,7 @@ async def send_message(
         conversation_id=conversation_id,
         content=body.content,
         user_id=current_user.id,
+        background_tasks=background_tasks,
     )
 
 

@@ -1,21 +1,30 @@
 """
 Conversation service: create conversations, send messages, and maintain
 multi-turn LLM context from stored history.
+
+LLM execution runs as a FastAPI background task *after* the HTTP response is
+sent, so POST /conversations and POST .../messages return as soon as the
+conversation/user-message rows exist — they never block on a provider call.
 """
+import asyncio
+import logging
 import uuid
 from typing import List, Optional, Tuple
 
-from fastapi import HTTPException, status
+from fastapi import BackgroundTasks, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.schemas.conversation import ConversationCreate
 from app.services.agent_router import log_routing, route as route_agent
 from app.services.llm_provider_service import complete as llm_complete
+
+log = logging.getLogger(__name__)
 
 _HISTORY_WINDOW = 10   # how many prior messages to include as context
 _FALLBACK_MODEL = "gemini-2.5-flash"
@@ -109,13 +118,16 @@ async def _call_llm(agent: Agent, user_prompt: str) -> Tuple[str, Optional[dict]
 async def create_conversation(
     db: AsyncSession,
     body: ConversationCreate,
+    background_tasks: Optional[BackgroundTasks] = None,
 ) -> Conversation:
     """
     Create a conversation.
 
     - If `agent_id` is provided, use that agent.
     - If only `prompt` is provided, match the best agent via keyword scoring.
-    - If `prompt` is also provided, send it as the first message (LLM call).
+    - If `prompt` is also provided, it is saved as the first user message
+      immediately and the agent's reply is generated in the background —
+      this call never waits on an LLM provider.
     """
     # Resolve agent
     if body.agent_id:
@@ -155,18 +167,32 @@ async def create_conversation(
     await db.commit()
     await db.refresh(conv)
 
-    # Send first message if prompt given
+    # Save the first user message (if any) and hand the LLM reply off to a
+    # background task — the request returns as soon as this commits.
     if body.prompt:
-        await _append_message_pair(
-            db,
-            conv=conv,
-            agent=agent,
-            user_id=body.user_id,
+        effective_user_id = body.user_id or uuid.UUID("00000000-0000-0000-0000-000000000001")
+        user_msg = Message(
+            id=uuid.uuid4(),
+            organization_id=conv.organization_id,
+            conversation_id=conv.id,
+            sender_type="user",
+            sender_id=effective_user_id,
+            content=body.prompt,
+        )
+        db.add(user_msg)
+        await db.commit()
+
+        _schedule_agent_reply(
+            background_tasks,
+            conversation_id=conv.id,
+            organization_id=conv.organization_id,
+            agent_id=agent.id,
             content=body.prompt,
             prior_messages=[],
         )
-        # Reload with messages
-        await db.refresh(conv)
+
+        # Reload with messages (only the user message exists so far — the
+        # agent's reply lands asynchronously once the background task commits)
         result = await db.execute(
             select(Conversation)
             .options(selectinload(Conversation.messages))
@@ -182,10 +208,12 @@ async def send_message(
     conversation_id: uuid.UUID,
     content: str,
     user_id: Optional[uuid.UUID] = None,
+    background_tasks: Optional[BackgroundTasks] = None,
 ) -> List[Message]:
     """
-    Append a user message and a synchronous LLM reply to the conversation.
-    Returns [user_message, agent_message].
+    Append a user message and schedule the agent's reply in the background.
+    Returns [user_message] immediately — the agent message is saved once the
+    background task finishes and shows up on the next poll/refetch.
     """
     conv = await _get_conversation(db, conversation_id)
     if not conv.agent_id:
@@ -195,30 +223,9 @@ async def send_message(
         )
     agent = await _get_agent(db, conv.agent_id)
 
-    # Gather recent history (messages already committed)
+    # Gather recent history (messages already committed) before adding the new one
     prior = list(conv.messages)[-_HISTORY_WINDOW:]
-
-    return await _append_message_pair(
-        db,
-        conv=conv,
-        agent=agent,
-        user_id=user_id or conv.user_id,
-        content=content,
-        prior_messages=prior,
-    )
-
-
-async def _append_message_pair(
-    db: AsyncSession,
-    *,
-    conv: Conversation,
-    agent: Agent,
-    user_id: Optional[uuid.UUID],
-    content: str,
-    prior_messages: List[Message],
-) -> List[Message]:
-    # Placeholder user ID when no authenticated user available
-    effective_user_id = user_id or uuid.UUID("00000000-0000-0000-0000-000000000001")
+    effective_user_id = user_id or conv.user_id or uuid.UUID("00000000-0000-0000-0000-000000000001")
 
     user_msg = Message(
         id=uuid.uuid4(),
@@ -232,23 +239,93 @@ async def _append_message_pair(
     await db.commit()
     await db.refresh(user_msg)
 
-    user_prompt = _build_user_prompt(content, prior_messages)
-    agent_content, payload = await _call_llm(agent, user_prompt)
-
-    agent_msg = Message(
-        id=uuid.uuid4(),
-        organization_id=conv.organization_id,
+    _schedule_agent_reply(
+        background_tasks,
         conversation_id=conv.id,
-        sender_type="agent",
-        sender_id=agent.id,
-        content=agent_content,
-        payload=payload,
+        organization_id=conv.organization_id,
+        agent_id=agent.id,
+        content=content,
+        prior_messages=prior,
     )
-    db.add(agent_msg)
-    await db.commit()
-    await db.refresh(agent_msg)
 
-    return [user_msg, agent_msg]
+    return [user_msg]
+
+
+# ── Background LLM execution ────────────────────────────────────────────────
+
+def _schedule_agent_reply(
+    background_tasks: Optional[BackgroundTasks],
+    *,
+    conversation_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    content: str,
+    prior_messages: List[Message],
+) -> None:
+    """
+    Hand the LLM call off so it runs after the HTTP response is sent.
+
+    Prefers FastAPI's BackgroundTasks (guaranteed to run post-response on the
+    same event loop). Falls back to asyncio.create_task for callers that
+    don't have a BackgroundTasks instance (e.g. scripts, tests).
+    """
+    kwargs = dict(
+        conversation_id=conversation_id,
+        organization_id=organization_id,
+        agent_id=agent_id,
+        content=content,
+        prior_messages=prior_messages,
+    )
+    if background_tasks is not None:
+        background_tasks.add_task(_generate_agent_reply, **kwargs)
+    else:
+        asyncio.create_task(_generate_agent_reply(**kwargs))
+
+
+async def _generate_agent_reply(
+    *,
+    conversation_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    content: str,
+    prior_messages: List[Message],
+) -> None:
+    """
+    Background task body: call the LLM and save the agent's message.
+
+    Runs after the request's DB session has already been closed, so it opens
+    its own session rather than reusing the one from `Depends(get_db)`.
+    Never raises — failures are logged and, where possible, saved as a
+    visible chat message instead of vanishing silently.
+    """
+    async with AsyncSessionLocal() as db:
+        try:
+            agent = await _get_agent(db, agent_id)
+        except HTTPException:
+            log.error(
+                "Background agent reply skipped: agent %s not found (conversation=%s)",
+                agent_id, conversation_id,
+            )
+            return
+
+        user_prompt = _build_user_prompt(content, prior_messages)
+        agent_content, payload = await _call_llm(agent, user_prompt)
+
+        agent_msg = Message(
+            id=uuid.uuid4(),
+            organization_id=organization_id,
+            conversation_id=conversation_id,
+            sender_type="agent",
+            sender_id=agent.id,
+            content=agent_content,
+            payload=payload,
+        )
+        db.add(agent_msg)
+        await db.commit()
+        log.info(
+            "Saved background agent reply for conversation=%s agent=%s",
+            conversation_id, agent_id,
+        )
 
 
 async def list_conversations(
