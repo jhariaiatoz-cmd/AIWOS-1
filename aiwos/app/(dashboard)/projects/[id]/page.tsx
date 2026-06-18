@@ -170,7 +170,7 @@ function TaskRow({ task, executions, onExecute, onView, isExecuting }: TaskRowPr
 // AgentCard — Team section
 // ---------------------------------------------------------------------------
 
-function AgentCard({ stat }: { stat: AgentStat }) {
+function AgentCard({ stat, isLead = false }: { stat: AgentStat; isLead?: boolean }) {
   const pct = stat.total > 0 ? Math.round((stat.completed / stat.total) * 100) : 0;
 
   return (
@@ -186,8 +186,18 @@ function AgentCard({ stat }: { stat: AgentStat }) {
         >
           {stat.name.charAt(0).toUpperCase()}
         </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">{stat.name}</p>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <p className="truncate text-sm font-semibold text-foreground">{stat.name}</p>
+            {isLead && (
+              <span
+                className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+                style={{ background: "var(--accent-glow)", color: "var(--purple)" }}
+              >
+                Lead
+              </span>
+            )}
+          </div>
           <p className="truncate text-[10px]" style={{ color: "var(--muted-foreground)" }}>
             {stat.role}
           </p>
@@ -512,21 +522,130 @@ export default function ProjectDetailPage() {
       {/* Team section — only rendered once tasks are loaded and agents are assigned */}
       {!tasksPending && agentStats.length > 0 && (
         <div className="mb-6">
-          <div className="mb-3 flex items-center gap-2">
-            <Users size={14} style={{ color: "var(--purple)" }} />
-            <span className="text-sm font-semibold text-foreground">Team</span>
-            <span
-              className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-              style={{ background: "var(--elevated)", color: "var(--muted-foreground)" }}
-            >
-              {agentStats.length} agent{agentStats.length !== 1 ? "s" : ""}
-            </span>
+          {/* Team Overview summary */}
+          <div
+            className="mb-4 rounded-xl border p-4"
+            style={{ background: "var(--card)", borderColor: "var(--border-light)" }}
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <Users size={14} style={{ color: "var(--purple)" }} />
+              <span className="text-sm font-semibold text-foreground">Team Overview</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div
+                className="rounded-lg px-3 py-2.5 text-center"
+                style={{ background: "var(--elevated)" }}
+              >
+                <p className="text-base font-bold text-foreground">{agentStats.length}</p>
+                <p className="text-[10px]" style={{ color: "var(--muted-foreground)" }}>
+                  Collaborators
+                </p>
+              </div>
+              <div
+                className="rounded-lg px-3 py-2.5 text-center"
+                style={{ background: "var(--elevated)" }}
+              >
+                <p className="text-base font-bold text-foreground">{total}</p>
+                <p className="text-[10px]" style={{ color: "var(--muted-foreground)" }}>
+                  Total Tasks
+                </p>
+              </div>
+              <div
+                className="rounded-lg px-3 py-2.5 text-center"
+                style={{ background: "var(--elevated)" }}
+              >
+                <p className="text-base font-bold" style={{ color: "var(--green)" }}>{done}</p>
+                <p className="text-[10px]" style={{ color: "var(--muted-foreground)" }}>
+                  Completed
+                </p>
+              </div>
+            </div>
+
+            {/* Per-agent task count row */}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {agentStats.map((stat) => {
+                const isLead = project.owner_agent?.id === stat.id;
+                return (
+                  <span
+                    key={stat.id}
+                    className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-medium"
+                    style={{
+                      background: isLead ? "var(--accent-glow)" : "var(--elevated)",
+                      color: isLead ? "var(--purple)" : "var(--muted-foreground)",
+                    }}
+                    title={stat.role}
+                  >
+                    {isLead && <span className="font-bold">★</span>}
+                    {stat.name}
+                    <span
+                      className="ml-1 rounded-full px-1.5 py-0.5"
+                      style={{
+                        background: isLead ? "rgba(124,58,237,0.2)" : "var(--border)",
+                        color: isLead ? "var(--purple)" : "var(--foreground)",
+                        fontSize: "9px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {stat.total}
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {agentStats.map((stat) => (
-              <AgentCard key={stat.id} stat={stat} />
-            ))}
-          </div>
+
+          {/* Lead agent card */}
+          {project.owner_agent && agentStats.some((s) => s.id === project.owner_agent!.id) && (
+            <div className="mb-3">
+              <div className="mb-2 flex items-center gap-2">
+                <User size={12} style={{ color: "var(--purple)" }} />
+                <span className="text-xs font-semibold" style={{ color: "var(--muted-foreground)" }}>
+                  Lead Agent
+                </span>
+              </div>
+              <div className="grid gap-3">
+                {agentStats
+                  .filter((s) => s.id === project.owner_agent!.id)
+                  .map((stat) => (
+                    <AgentCard key={stat.id} stat={stat} isLead />
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Collaborating agents */}
+          {agentStats.filter((s) => s.id !== project.owner_agent?.id).length > 0 && (
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <Users size={12} style={{ color: "var(--muted-foreground)" }} />
+                <span className="text-xs font-semibold" style={{ color: "var(--muted-foreground)" }}>
+                  Collaborating Agents
+                  <span
+                    className="ml-1.5 rounded-full px-1.5 py-0.5 text-[10px]"
+                    style={{ background: "var(--elevated)" }}
+                  >
+                    {agentStats.filter((s) => s.id !== project.owner_agent?.id).length}
+                  </span>
+                </span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {agentStats
+                  .filter((s) => s.id !== project.owner_agent?.id)
+                  .map((stat) => (
+                    <AgentCard key={stat.id} stat={stat} />
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Fallback: no owner_agent set — show all agents together */}
+          {!project.owner_agent && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {agentStats.map((stat) => (
+                <AgentCard key={stat.id} stat={stat} />
+              ))}
+            </div>
+          )}
         </div>
       )}
 

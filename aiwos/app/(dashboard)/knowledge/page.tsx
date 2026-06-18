@@ -1,82 +1,59 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { useRef, useState } from "react";
+import { Loader2, Plus, Upload } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DocumentsTable,
-  type KnowledgeDocument,
 } from "@/components/knowledge/DocumentsTable";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SearchInput } from "@/components/common/SearchInput";
+import { knowledgeApi } from "@/lib/api/knowledge";
+import { useAuthStore } from "@/lib/store/auth";
 
-const documentsData: KnowledgeDocument[] = [
-  {
-    id: "doc-1",
-    name: "Company Policies.pdf",
-    type: "PDF",
-    uploadedBy: "John Doe",
-    uploadDate: "2025-05-10",
-    usedByAgents: ["HR Agent", "Support Agent"],
-  },
-  {
-    id: "doc-2",
-    name: "Product Docs",
-    type: "Folder",
-    uploadedBy: "Jane Smith",
-    uploadDate: "2025-05-17",
-    usedByAgents: ["Code Assistant", "Research Agent"],
-  },
-  {
-    id: "doc-3",
-    name: "API Documentation.pdf",
-    type: "PDF",
-    uploadedBy: "John Doe",
-    uploadDate: "2025-05-12",
-    usedByAgents: ["Code Assistant", "DevOps Agent"],
-  },
-  {
-    id: "doc-4",
-    name: "Market Research Q2.docx",
-    type: "Docx",
-    uploadedBy: "Mila Johnson",
-    uploadDate: "2025-05-15",
-    usedByAgents: ["Research Agent"],
-  },
-  {
-    id: "doc-5",
-    name: "Financial Guidelines.pdf",
-    type: "PDF",
-    uploadedBy: "Sarah Wilson",
-    uploadDate: "2025-05-14",
-    usedByAgents: ["Finance Agent"],
-  },
-  {
-    id: "doc-6",
-    name: "Customer Feedback.csv",
-    type: "CSV",
-    uploadedBy: "Alex Rivera",
-    uploadDate: "2025-05-19",
-    usedByAgents: ["Support Agent", "Marketing Agent"],
-  },
-];
+const ACCEPTED = ".pdf,.docx,.txt,.md,.csv";
 
 export default function KnowledgePage() {
+  const { currentOrgId } = useAuthStore();
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const filteredDocuments = useMemo(() => {
-    const query = searchQuery.toLowerCase();
+  const { data: documents = [], isPending } = useQuery({
+    queryKey: ["knowledge", currentOrgId],
+    queryFn: () => knowledgeApi.list(currentOrgId!),
+    enabled: !!currentOrgId,
+  });
 
-    return documentsData.filter((document) => {
-      return (
-        document.name.toLowerCase().includes(query) ||
-        document.type.toLowerCase().includes(query) ||
-        document.uploadedBy.toLowerCase().includes(query) ||
-        document.usedByAgents.some((agent) =>
-          agent.toLowerCase().includes(query)
-        )
-      );
-    });
-  }, [searchQuery]);
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => knowledgeApi.upload(currentOrgId!, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge", currentOrgId] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => knowledgeApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge", currentOrgId] });
+    },
+  });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      uploadMutation.mutate(file);
+      e.target.value = "";
+    }
+  };
+
+  const filtered = documents.filter((doc) => {
+    const q = searchQuery.toLowerCase();
+    return (
+      doc.name.toLowerCase().includes(q) ||
+      doc.file_type.toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="min-h-full">
@@ -89,40 +66,84 @@ export default function KnowledgePage() {
             Manage documents and data for your agents.
           </p>
         </div>
-        <button
-          type="button"
-          className="flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-all hover:-translate-y-px focus:ring-2 focus:ring-primary/25 focus:outline-none"
-          style={{ background: "var(--purple)" }}
-        >
-          <Plus size={16} />
-          Add Document
-        </button>
+
+        <div className="flex items-center gap-2">
+          {uploadMutation.isPending && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 size={12} className="animate-spin" />
+              Uploading…
+            </span>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ACCEPTED}
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <button
+            type="button"
+            disabled={!currentOrgId || uploadMutation.isPending}
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-all hover:-translate-y-px focus:ring-2 focus:ring-primary/25 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed disabled:translate-y-0"
+            style={{ background: "var(--purple)" }}
+          >
+            <Upload size={15} />
+            Upload Document
+          </button>
+        </div>
       </div>
+
+      {uploadMutation.isError && (
+        <div
+          className="mb-4 rounded-lg px-4 py-2.5 text-sm"
+          style={{ background: "rgba(239,68,68,0.1)", color: "var(--red)" }}
+        >
+          Upload failed. Supported formats: PDF, DOCX, TXT, MD, CSV.
+        </div>
+      )}
 
       <div className="mb-6">
         <SearchInput
           label="Search documents"
           value={searchQuery}
           onChange={setSearchQuery}
-          placeholder="Search documents..."
+          placeholder="Search documents…"
         />
       </div>
 
-      <div className="mb-4">
-        <p className="text-xs text-muted-foreground">
-          Showing <span className="font-semibold">{filteredDocuments.length}</span>{" "}
-          of <span className="font-semibold">{documentsData.length}</span>{" "}
-          documents
-        </p>
-      </div>
-
-      {filteredDocuments.length > 0 ? (
-        <DocumentsTable documents={filteredDocuments} />
+      {isPending ? (
+        <div className="flex items-center justify-center py-20 text-muted-foreground">
+          <Loader2 size={20} className="mr-2 animate-spin" />
+          Loading documents…
+        </div>
       ) : (
-        <EmptyState
-          title="No documents found"
-          description="Try changing your search terms."
-        />
+        <>
+          <div className="mb-4">
+            <p className="text-xs text-muted-foreground">
+              Showing{" "}
+              <span className="font-semibold">{filtered.length}</span> of{" "}
+              <span className="font-semibold">{documents.length}</span>{" "}
+              documents
+            </p>
+          </div>
+
+          {filtered.length > 0 ? (
+            <DocumentsTable
+              documents={filtered}
+              onDelete={(id) => deleteMutation.mutate(id)}
+            />
+          ) : (
+            <EmptyState
+              title={documents.length === 0 ? "No documents yet" : "No documents found"}
+              description={
+                documents.length === 0
+                  ? "Upload a PDF, DOCX, TXT, MD, or CSV file to get started."
+                  : "Try changing your search terms."
+              }
+            />
+          )}
+        </>
       )}
     </div>
   );

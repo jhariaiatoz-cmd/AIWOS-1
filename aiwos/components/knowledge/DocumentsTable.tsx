@@ -1,93 +1,86 @@
 "use client";
 
-import { FileArchive, FileText, Folder, MoreVertical, Table } from "lucide-react";
+import { FileArchive, FileText, MoreVertical, Table, Trash2 } from "lucide-react";
 
-export type DocumentFileType = "PDF" | "Docx" | "Folder" | "CSV";
+export type KnowledgeFileType = "pdf" | "docx" | "txt" | "md" | "csv";
 
 export interface KnowledgeDocument {
   id: string;
   name: string;
-  type: DocumentFileType;
-  uploadedBy: string;
-  uploadDate: string;
-  usedByAgents: string[];
+  file_type: string;
+  file_size: number;
+  created_at: string;
 }
 
 interface DocumentsTableProps {
   documents: KnowledgeDocument[];
+  onDelete?: (id: string) => void;
 }
 
-function FileTypeBadge({ type }: { type: DocumentFileType }) {
-  const styles = {
-    PDF: {
-      icon: FileArchive,
-      background: "rgba(239,68,68,0.12)",
-      color: "var(--red)",
-    },
-    Docx: {
-      icon: FileText,
-      background: "rgba(6,182,212,0.12)",
-      color: "var(--cyan)",
-    },
-    Folder: {
-      icon: Folder,
-      background: "rgba(245,158,11,0.12)",
-      color: "var(--amber)",
-    },
-    CSV: {
-      icon: Table,
-      background: "rgba(16,185,129,0.12)",
-      color: "var(--green)",
-    },
-  } satisfies Record<
-    DocumentFileType,
-    {
-      icon: typeof FileText;
-      background: string;
-      color: string;
-    }
-  >;
+const TYPE_STYLES: Record<
+  string,
+  { icon: typeof FileText; background: string; color: string; label: string }
+> = {
+  pdf: {
+    icon: FileArchive,
+    background: "rgba(239,68,68,0.12)",
+    color: "var(--red)",
+    label: "PDF",
+  },
+  docx: {
+    icon: FileText,
+    background: "rgba(6,182,212,0.12)",
+    color: "var(--cyan)",
+    label: "DOCX",
+  },
+  txt: {
+    icon: FileText,
+    background: "rgba(107,114,128,0.12)",
+    color: "var(--muted-foreground)",
+    label: "TXT",
+  },
+  md: {
+    icon: FileText,
+    background: "rgba(124,58,237,0.12)",
+    color: "var(--purple)",
+    label: "MD",
+  },
+  csv: {
+    icon: Table,
+    background: "rgba(16,185,129,0.12)",
+    color: "var(--green)",
+    label: "CSV",
+  },
+};
 
-  const Icon = styles[type].icon;
+const DEFAULT_STYLE = {
+  icon: FileText,
+  background: "rgba(107,114,128,0.12)",
+  color: "var(--muted-foreground)",
+  label: "FILE",
+};
 
+function FileTypeBadge({ type }: { type: string }) {
+  const style = TYPE_STYLES[type.toLowerCase()] ?? DEFAULT_STYLE;
+  const Icon = style.icon;
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium"
-      style={{
-        background: styles[type].background,
-        color: styles[type].color,
-      }}
+      style={{ background: style.background, color: style.color }}
     >
       <Icon size={12} />
-      {type}
+      {style.label}
     </span>
   );
 }
 
-function AgentUsage({ agents }: { agents: string[] }) {
-  if (agents.length === 0) {
-    return <span className="text-sm text-muted-foreground">Not used</span>;
-  }
-
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {agents.map((agent) => (
-        <span
-          key={agent}
-          className="rounded-full px-2 py-1 text-xs font-medium"
-          style={{
-            background: "rgba(124,58,237,0.12)",
-            color: "var(--purple)",
-          }}
-        >
-          {agent}
-        </span>
-      ))}
-    </div>
-  );
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function DocumentsTable({ documents }: DocumentsTableProps) {
+export function DocumentsTable({ documents, onDelete }: DocumentsTableProps) {
   return (
     <div
       className="overflow-hidden rounded-xl border"
@@ -109,16 +102,13 @@ export function DocumentsTable({ documents }: DocumentsTableProps) {
                 Document Name
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
-                File Type
+                Type
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
-                Uploaded By
+                Size
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
                 Upload Date
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">
-                Used By Agents
               </th>
               <th scope="col" className="px-6 py-3 text-center text-xs font-semibold text-muted-foreground">
                 Actions
@@ -126,9 +116,9 @@ export function DocumentsTable({ documents }: DocumentsTableProps) {
             </tr>
           </thead>
           <tbody>
-            {documents.map((document, idx) => (
+            {documents.map((doc, idx) => (
               <tr
-                key={document.id}
+                key={doc.id}
                 className="transition-colors hover:bg-[var(--accent)]"
                 style={{
                   borderBottom:
@@ -139,36 +129,43 @@ export function DocumentsTable({ documents }: DocumentsTableProps) {
               >
                 <td className="px-6 py-4">
                   <span className="text-sm font-medium text-foreground">
-                    {document.name}
+                    {doc.name}
                   </span>
                 </td>
                 <td className="px-6 py-4">
-                  <FileTypeBadge type={document.type} />
+                  <FileTypeBadge type={doc.file_type} />
                 </td>
                 <td className="px-6 py-4">
                   <span className="text-sm text-muted-foreground">
-                    {document.uploadedBy}
+                    {formatBytes(doc.file_size)}
                   </span>
                 </td>
                 <td className="px-6 py-4">
                   <span className="text-sm text-muted-foreground">
-                    {new Date(document.uploadDate).toLocaleDateString("en-US", {
+                    {new Date(doc.created_at).toLocaleDateString("en-US", {
                       month: "short",
                       day: "numeric",
                       year: "numeric",
                     })}
                   </span>
                 </td>
-                <td className="px-6 py-4">
-                  <AgentUsage agents={document.usedByAgents} />
-                </td>
                 <td className="px-6 py-4 text-center">
-                  <button
-                    className="inline-flex items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-[var(--border)] hover:text-foreground"
-                    aria-label={`Actions for ${document.name}`}
-                  >
-                    <MoreVertical size={16} />
-                  </button>
+                  {onDelete ? (
+                    <button
+                      onClick={() => onDelete(doc.id)}
+                      className="inline-flex items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-[var(--border)] hover:text-red-500"
+                      aria-label={`Delete ${doc.name}`}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  ) : (
+                    <button
+                      className="inline-flex items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-[var(--border)] hover:text-foreground"
+                      aria-label={`Actions for ${doc.name}`}
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
