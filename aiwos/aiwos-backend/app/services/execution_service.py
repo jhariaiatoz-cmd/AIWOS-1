@@ -5,6 +5,7 @@ from typing import List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.context.aiwos_context import AIWOS_PROJECT_CONTEXT
 from app.models.agent import Agent
 from app.models.agent_metric import AgentMetric
 from app.models.execution_log import ExecutionLog
@@ -229,11 +230,12 @@ async def _resolve_agent(
 
 
 def _build_system_prompt(agent: Agent) -> str:
-    parts = []
+    parts: list[str] = [f"You are {agent.name}, a {agent.role}."]
     if agent.goal:
-        parts.append(f"Goal: {agent.goal}")
+        parts.append(f"## Your Goal\n{agent.goal}")
     if agent.instructions:
-        parts.append(agent.instructions)
+        parts.append(f"## How You Work\n{agent.instructions}")
+    parts.append(AIWOS_PROJECT_CONTEXT)
     return "\n\n".join(parts)
 
 

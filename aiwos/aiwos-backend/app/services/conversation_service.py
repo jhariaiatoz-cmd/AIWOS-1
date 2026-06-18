@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
+from app.context.aiwos_context import AIWOS_PROJECT_CONTEXT
 from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
 from app.models.conversation import Conversation
@@ -158,9 +159,10 @@ def _build_system_prompt(agent: Agent) -> str:
       2. Your Domain       — what you own
       3. How You Work      — user-configured instructions
       4. Your Expertise    — skills list
-      5. Response Format   — non-negotiable Markdown contract
-      6. Your Professional Conduct — persona-specific behavioral rules
-      7. Hard Constraints  — universal guardrails
+      5. AIWOS Project Context — static codebase awareness
+      6. Response Format   — non-negotiable Markdown contract
+      7. Your Professional Conduct — persona-specific behavioral rules
+      8. Hard Constraints  — universal guardrails
     """
     skills: list[str] = agent.skills if isinstance(agent.skills, list) else []
 
@@ -202,7 +204,11 @@ def _build_system_prompt(agent: Agent) -> str:
         for skill in skills:
             lines.append(f"- {skill}")
 
-    # ── 5. Response Format ───────────────────────────────────────────────────
+    # ── 5. AIWOS Project Context ─────────────────────────────────────────────
+    lines.append("")
+    lines.append(AIWOS_PROJECT_CONTEXT)
+
+    # ── 6. Response Format ───────────────────────────────────────────────────
     lines += [
         "",
         "## Response Format",
@@ -219,14 +225,14 @@ def _build_system_prompt(agent: Agent) -> str:
         "- When a short direct answer suffices, give it without forcing structure onto it.",
     ]
 
-    # ── 6. Your Professional Conduct ─────────────────────────────────────────
+    # ── 7. Your Professional Conduct ─────────────────────────────────────────
     conduct = _detect_persona_conduct(agent)
     lines.append("")
     lines.append("## Your Professional Conduct")
     for rule in conduct:
         lines.append(f"- {rule}")
 
-    # ── 7. Hard Constraints ──────────────────────────────────────────────────
+    # ── 8. Hard Constraints ──────────────────────────────────────────────────
     lines += [
         "",
         "## Hard Constraints",
