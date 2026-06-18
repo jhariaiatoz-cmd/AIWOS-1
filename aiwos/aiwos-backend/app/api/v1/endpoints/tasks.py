@@ -8,9 +8,10 @@ from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.task import Task
 from app.models.user import User
-from app.schemas.task import TaskCreate, TaskResponse, TaskUpdate
+from app.schemas.task import TaskBulkFromProject, TaskBulkResponse, TaskCreate, TaskResponse, TaskUpdate
 from app.services.task_service import (
     create_task,
+    create_tasks_from_project,
     delete_task,
     get_task,
     list_tasks,
@@ -38,6 +39,24 @@ async def list_all(
     _: User = Depends(get_current_user),
 ) -> List[Task]:
     return await list_tasks(db, project_id, skip=skip, limit=limit)
+
+
+@router.post("/from-project", response_model=TaskBulkResponse, status_code=status.HTTP_201_CREATED)
+async def create_from_project(
+    body: TaskBulkFromProject,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> dict:
+    created = await create_tasks_from_project(
+        db,
+        project_id=body.project_id,
+        organization_id=body.organization_id,
+        milestones=body.milestones,
+        tasks=body.tasks,
+        priority=body.priority,
+        owner_agent_id=body.owner_agent_id,
+    )
+    return {"created": created, "count": len(created)}
 
 
 @router.get("/{task_id}", response_model=TaskResponse)

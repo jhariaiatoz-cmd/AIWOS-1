@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CONVERSATIONS, MESSAGES } from "@/lib/data/chat";
-import type { Message, Conversation, ProjectRecommendationMetadata } from "@/lib/data/chat";
+import type { Message, Conversation, ProjectRecommendationMetadata, ProjectPriority, ProjectComplexity } from "@/lib/data/chat";
 import { ConversationSidebar, avatarGradient, agentInitials } from "@/components/chat/ConversationSidebar";
 import { ChatArea } from "@/components/chat/ChatArea";
 import { useAuthStore } from "@/lib/store/auth";
@@ -22,22 +22,102 @@ function isAwaitingAgentReply(conv: ConversationResponse | undefined): boolean {
 // Project recommendation detection
 // ---------------------------------------------------------------------------
 
+// Keywords that signal the user wants to BUILD something new
+const _CREATION_INTENT_RE =
+  /\b(build|create|develop|implement|design|launch|set\s+up|start|make|establish|deploy)\b/i;
+
+// Keywords that signal explanatory/analytical intent — NOT a new project
+const _NON_PROJECT_INTENT_RE =
+  /\b(explain|what\s+is|what\s+are|how\s+does|how\s+do|describe|overview|audit|review|summari[sz]|tell\s+me\s+about|existing|current|already)\b/i;
+
 const _GENERIC_HEADINGS = new Set([
-  "plan", "overview", "summary", "approach", "analysis",
-  "response", "implementation", "recommendations", "next steps",
-  "background", "context", "conclusion",
+  "executive summary", "analysis", "recommended plan", "risks", "next actions",
+  "overview", "summary", "approach", "response", "recommendations",
+  "background", "context", "conclusion", "next steps",
 ]);
+
+// ── Priority ─────────────────────────────────────────────────────────────────
+
+const _HIGH_PRIORITY_RE =
+  /\b(urgent|critical|asap|high[- ]priority|immediately|top[- ]priority|p0|p1|time[- ]sensitive|blocker)\b/i;
+const _LOW_PRIORITY_RE =
+  /\b(nice[- ]to[- ]have|low[- ]priority|optional|eventually|backlog|p3|p4|long[- ]term|future[- ]consideration)\b/i;
+
+function _extractPriority(content: string, userMsg: string): ProjectPriority {
+  const combined = `${userMsg} ${content}`;
+  if (_HIGH_PRIORITY_RE.test(combined)) return "High";
+  if (_LOW_PRIORITY_RE.test(combined)) return "Low";
+  return "Medium";
+}
+
+// ── Complexity ────────────────────────────────────────────────────────────────
+
+const _HIGH_COMPLEXITY_RE =
+  /\b(complex|large[- ]scale|enterprise|extensive|multiple\s+teams?|architecture|migration|integration|several\s+months?)\b/i;
+const _LOW_COMPLEXITY_RE =
+  /\b(simple|straightforward|basic|quick|small|minimal|prototype|proof[- ]of[- ]concept|poc|mvp|weekend)\b/i;
+
+function _extractComplexity(content: string, taskCount: number): ProjectComplexity {
+  if (taskCount >= 7 || _HIGH_COMPLEXITY_RE.test(content)) return "High";
+  if (_LOW_COMPLEXITY_RE.test(content)) return "Low";
+  return "Medium";
+}
+
+// ── Milestones ────────────────────────────────────────────────────────────────
+
+// Matches ### subheadings that look like phases/milestones/sprints
+const _MILESTONE_H3_RE = /^###\s+(.+)/gm;
+// Matches bold inline labels like **Phase 1: Setup** or **Milestone 2 —**
+const _MILESTONE_BOLD_RE =
+  /\*\*((?:phase|milestone|stage|sprint|week|month|step|q[1-4])\s*[\d.:\-–—][^*\n]{0,60})\*\*/gi;
+
+function _extractMilestones(planSection: string): string[] {
+  const results: string[] = [];
+
+  // Prefer ### subheadings within the plan section
+  for (const m of planSection.matchAll(_MILESTONE_H3_RE)) {
+    results.push(m[1].trim().replace(/\*\*/g, ""));
+  }
+  if (results.length > 0) return results.slice(0, 5);
+
+  // Fall back to bold phase/milestone labels
+  for (const m of planSection.matchAll(_MILESTONE_BOLD_RE)) {
+    results.push(m[1].trim());
+  }
+  return results.slice(0, 5);
+}
+
+// ── Main detector ─────────────────────────────────────────────────────────────
 
 function detectProjectRecommendation(
   content: string,
+  userMessage: string = "",
 ): ProjectRecommendationMetadata | null {
-  const hasPlanSection = /^##\s+plan\b/im.test(content);
-  const bulletItems = content.match(/^[-*]\s+\S[^\n]*/gm) ?? [];
-  const hasEnoughTasks = bulletItems.length >= 3;
+  // Only surface a project card when the user explicitly asked to build/create something
+  if (!_CREATION_INTENT_RE.test(userMessage)) return null;
+  // Suppress if the user's intent is explanatory or analytical, not generative
+  if (_NON_PROJECT_INTENT_RE.test(userMessage)) return null;
 
-  if (!hasPlanSection && !hasEnoughTasks) return null;
+  // Response must have a plan-style heading — a mere list of bullets is not enough
+  const hasPlanSection =
+    /^##\s+(recommended\s+plan|implementation\s+plan|action\s+plan|plan)\b/im.test(content);
+  if (!hasPlanSection) return null;
 
-  // Project name: first ## heading that isn't a generic section word
+  // Isolate the plan section body (up to the next ## heading) for targeted extraction
+  const planMatch = content.match(
+    /^##\s+(?:recommended\s+|implementation\s+|action\s+)?plan\b[^\n]*\n([\s\S]*?)(?=^##\s+|$)/im,
+  );
+  const planSection = planMatch?.[1] ?? content;
+
+  // Bullets sourced from the plan section; fall back to full doc if plan had none
+  const planBullets = planSection.match(/^[-*]\s+\S[^\n]*/gm) ?? [];
+  const allBullets = planBullets.length >= 3
+    ? planBullets
+    : (content.match(/^[-*]\s+\S[^\n]*/gm) ?? []);
+
+  if (allBullets.length < 3) return null;
+
+  // Project name: first ## heading that isn't a standard section name
   let name = "New Project";
   for (const match of content.matchAll(/^##\s+(.+)/gm)) {
     const title = match[1].trim();
@@ -47,16 +127,19 @@ function detectProjectRecommendation(
     }
   }
 
-  // Description: first non-empty, non-heading prose line (≥ 20 chars)
+  // Description: first non-heading, non-list prose line ≥ 20 chars
   const descMatch = content.match(/^(?!#)(?![-*\d])([A-Z][^\n]{19,})/m);
   const description = descMatch?.[1]?.trim() ?? "";
 
-  // Up to 5 tasks — strip markdown bold markers for clean display
-  const tasks = bulletItems
-    .slice(0, 5)
+  const tasks = allBullets
+    .slice(0, 6)
     .map((item) => item.replace(/^[-*]\s+/, "").replace(/\*\*/g, "").trim());
 
-  return { type: "project_recommendation", name, description, tasks };
+  const milestones = _extractMilestones(planSection);
+  const priority = _extractPriority(content, userMessage);
+  const complexity = _extractComplexity(content, tasks.length);
+
+  return { type: "project_recommendation", name, description, milestones, tasks, priority, complexity };
 }
 
 // ---------------------------------------------------------------------------
@@ -67,6 +150,7 @@ function apiConvToFrontend(conv: ConversationResponse): Conversation {
   const lastMsg = conv.messages[conv.messages.length - 1];
   return {
     id: conv.id,
+    agentId: conv.agent_id ?? "",
     agentName: name,
     agentRole: agent?.role ?? "",
     agentInitials: agentInitials(name),
@@ -84,8 +168,12 @@ function apiConvToFrontend(conv: ConversationResponse): Conversation {
 }
 
 function apiMsgsToFrontend(conv: ConversationResponse): Message[] {
-  return conv.messages.map((m) => {
+  return conv.messages.map((m, index) => {
     const isAgent = m.sender_type === "agent";
+    // Find the most recent user message before this agent reply to check intent
+    const precedingUserMsg = isAgent
+      ? conv.messages.slice(0, index).reverse().find((x) => x.sender_type === "user")
+      : undefined;
     return {
       id: m.id,
       conversationId: conv.id,
@@ -95,7 +183,9 @@ function apiMsgsToFrontend(conv: ConversationResponse): Message[] {
         hour: "2-digit",
         minute: "2-digit",
       }),
-      metadata: isAgent ? detectProjectRecommendation(m.content) : null,
+      metadata: isAgent
+        ? detectProjectRecommendation(m.content, precedingUserMsg?.content ?? "")
+        : null,
     };
   });
 }
@@ -178,7 +268,7 @@ function GuestChatPage() {
       id: c.id,
       organization_id: "guest",
       user_id: null,
-      agent_id: c.id,
+      agent_id: c.agentId,
       title: c.agentName,
       context_type: "agent",
       context_id: null,
@@ -189,7 +279,7 @@ function GuestChatPage() {
             id: lastMsg.id,
             conversation_id: c.id,
             sender_type: lastMsg.sender === "user" ? "user" : "agent",
-            sender_id: c.id,
+            sender_id: c.agentId,
             content: lastMsg.content,
             payload: null,
             execution_id: null,
@@ -197,7 +287,7 @@ function GuestChatPage() {
           }]
         : [],
       agent: {
-        id: c.id,
+        id: c.agentId,
         name: c.agentName,
         role: c.agentRole,
         status: "Active",
@@ -354,6 +444,13 @@ function AuthenticatedChatPage({ orgId }: { orgId: string }) {
     sendMessage.mutate({ convId: conversationId, content });
   }
 
+  const { data: agentWorkload } = useQuery({
+    queryKey: ["agent-workload", selectedAgentId],
+    queryFn: () => agentApi.workload(selectedAgentId!),
+    enabled: !!selectedAgentId,
+    staleTime: 30_000,
+  });
+
   const activeMessages: Message[] = selectedApiConv ? apiMsgsToFrontend(selectedApiConv) : [];
 
   const selectedConversation: Conversation | null = selectedApiConv
@@ -386,6 +483,7 @@ function AuthenticatedChatPage({ orgId }: { orgId: string }) {
       mobileView={mobileView}
       isCreatingConv={isCreatingConv}
       isExecuting={isAwaitingAgentReply(selectedApiConv)}
+      agentWorkload={agentWorkload}
       onAgentSelect={(id) => handleAgentSelect(id)}
       onSend={handleSend}
       onBack={() => setMobileView("sidebar")}
@@ -405,6 +503,7 @@ interface ChatShellProps {
   mobileView: "sidebar" | "chat";
   isCreatingConv: boolean;
   isExecuting: boolean;
+  agentWorkload?: { projects_owned: number; tasks_assigned: number };
   onAgentSelect: (agentId: string) => void;
   onSend: (conversationId: string, content: string) => void;
   onBack: () => void;
@@ -420,6 +519,7 @@ function ChatShell({
   mobileView,
   isCreatingConv,
   isExecuting,
+  agentWorkload,
   onAgentSelect,
   onSend,
   onBack,
@@ -469,6 +569,7 @@ function ChatShell({
               onBack={onBack}
               onSend={onSend}
               isExecuting={isExecuting}
+              agentWorkload={agentWorkload}
             />
           )}
         </div>

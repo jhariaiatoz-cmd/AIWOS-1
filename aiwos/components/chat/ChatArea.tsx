@@ -13,6 +13,7 @@ interface ChatAreaProps {
   onBack?: () => void;
   onSend: (conversationId: string, content: string) => void;
   isExecuting?: boolean;
+  agentWorkload?: { projects_owned: number; tasks_assigned: number };
 }
 
 function StatusLabel({ status }: { status: AgentStatus }) {
@@ -61,6 +62,7 @@ export function ChatArea({
   onBack,
   onSend,
   isExecuting = false,
+  agentWorkload,
 }: ChatAreaProps) {
   const [draft, setDraft] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -153,6 +155,19 @@ export function ChatArea({
             <span style={{ color: "var(--border-light)" }}>·</span>
             <StatusLabel status={conversation.status} />
           </div>
+          {agentWorkload && (agentWorkload.projects_owned > 0 || agentWorkload.tasks_assigned > 0) && (
+            <div className="mt-0.5 flex items-center gap-2.5 text-[10px]" style={{ color: "var(--faint)" }}>
+              {agentWorkload.projects_owned > 0 && (
+                <span>{agentWorkload.projects_owned} project{agentWorkload.projects_owned !== 1 ? "s" : ""} owned</span>
+              )}
+              {agentWorkload.projects_owned > 0 && agentWorkload.tasks_assigned > 0 && (
+                <span style={{ color: "var(--border-light)" }}>·</span>
+              )}
+              {agentWorkload.tasks_assigned > 0 && (
+                <span>{agentWorkload.tasks_assigned} task{agentWorkload.tasks_assigned !== 1 ? "s" : ""} assigned</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -221,7 +236,10 @@ export function ChatArea({
                 {/* Project recommendation card — aligned with bubble (past the avatar) */}
                 {hasRecommendation && msg.metadata && (
                   <div className="pl-9">
-                    <ProjectRecommendationCard metadata={msg.metadata} />
+                    <ProjectRecommendationCard
+                      metadata={msg.metadata}
+                      agentId={conversation.agentId}
+                    />
                   </div>
                 )}
               </div>

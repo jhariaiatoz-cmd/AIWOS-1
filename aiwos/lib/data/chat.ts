@@ -2,6 +2,7 @@ export type AgentStatus = "online" | "busy" | "offline";
 
 export interface Conversation {
   id: string;
+  agentId: string;
   agentName: string;
   agentRole: string;
   agentInitials: string;
@@ -12,11 +13,17 @@ export interface Conversation {
   unread: number;
 }
 
+export type ProjectPriority = "High" | "Medium" | "Low";
+export type ProjectComplexity = "High" | "Medium" | "Low";
+
 export interface ProjectRecommendationMetadata {
   type: "project_recommendation";
   name: string;
   description: string;
+  milestones: string[];
   tasks: string[];
+  priority: ProjectPriority;
+  complexity: ProjectComplexity;
 }
 
 export interface Message {
@@ -31,6 +38,7 @@ export interface Message {
 export const CONVERSATIONS: Conversation[] = [
   {
     id: "conv-1",
+    agentId: "agent-1",
     agentName: "Atlas",
     agentRole: "Research Analyst",
     agentInitials: "AT",
@@ -42,6 +50,7 @@ export const CONVERSATIONS: Conversation[] = [
   },
   {
     id: "conv-2",
+    agentId: "agent-2",
     agentName: "Nova",
     agentRole: "Content Writer",
     agentInitials: "NV",
@@ -53,6 +62,7 @@ export const CONVERSATIONS: Conversation[] = [
   },
   {
     id: "conv-3",
+    agentId: "agent-3",
     agentName: "Orion",
     agentRole: "Data Engineer",
     agentInitials: "OR",
@@ -64,6 +74,7 @@ export const CONVERSATIONS: Conversation[] = [
   },
   {
     id: "conv-4",
+    agentId: "agent-4",
     agentName: "Lyra",
     agentRole: "UX Designer",
     agentInitials: "LY",
@@ -75,6 +86,7 @@ export const CONVERSATIONS: Conversation[] = [
   },
   {
     id: "conv-5",
+    agentId: "agent-5",
     agentName: "Vega",
     agentRole: "DevOps Engineer",
     agentInitials: "VG",
@@ -86,6 +98,7 @@ export const CONVERSATIONS: Conversation[] = [
   },
   {
     id: "conv-6",
+    agentId: "agent-6",
     agentName: "Zephyr",
     agentRole: "QA Engineer",
     agentInitials: "ZP",

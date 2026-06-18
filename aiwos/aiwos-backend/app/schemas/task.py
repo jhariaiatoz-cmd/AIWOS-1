@@ -1,11 +1,18 @@
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
 TaskPriority = Literal["Low", "Medium", "High", "Critical"]
 TaskStatus = Literal["Todo", "In Progress", "Review", "Done", "Cancelled"]
+
+
+class AssignedAgentInfo(BaseModel):
+    id: uuid.UUID
+    name: str
+    role: str
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TaskCreate(BaseModel):
@@ -59,6 +66,7 @@ class TaskResponse(BaseModel):
     organization_id: uuid.UUID
     project_id: uuid.UUID
     assigned_to: uuid.UUID | None
+    assigned_agent: AssignedAgentInfo | None = None
     title: str
     description: str | None
     priority: str
@@ -69,3 +77,17 @@ class TaskResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class TaskBulkFromProject(BaseModel):
+    project_id: uuid.UUID
+    organization_id: uuid.UUID
+    milestones: list[str] = []
+    tasks: list[str] = []
+    priority: TaskPriority = "Medium"
+    owner_agent_id: Optional[uuid.UUID] = None
+
+
+class TaskBulkResponse(BaseModel):
+    created: list[TaskResponse]
+    count: int

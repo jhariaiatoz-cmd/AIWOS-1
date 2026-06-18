@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Project } from "@/lib/data/projects";
 
 interface ProjectCardProps {
@@ -42,11 +43,13 @@ function StatusBadge({ status }: { status: "Active" | "On Hold" | "Completed" })
 
 export function ProjectCard({ project }: ProjectCardProps) {
   return (
-    <div
-      className="flex flex-col rounded-xl border p-5 transition-all duration-150 hover:border-[var(--border)]"
+    <Link
+      href={`/projects/${project.id}`}
+      className="flex flex-col rounded-xl border p-5 transition-all duration-150 hover:border-[var(--border)] hover:-translate-y-px"
       style={{
         background: "var(--card)",
         borderColor: "var(--border-light)",
+        textDecoration: "none",
       }}
     >
       {/* Header */}
@@ -151,6 +154,6 @@ export function ProjectCard({ project }: ProjectCardProps) {
           {project.priority}
         </span>
       </div>
-    </div>
+    </Link>
   );
 }

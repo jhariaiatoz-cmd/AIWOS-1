@@ -2,11 +2,14 @@ import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.agent import Agent
+from app.models.project import Project
+from app.models.task import Task
 from app.models.user import User
 from app.schemas.agent import AgentCreate, AgentResponse, AgentUpdate
 from app.services.agent_service import (
@@ -39,6 +42,27 @@ async def list_all(
     _: User = Depends(get_current_user),
 ) -> List[Agent]:
     return await list_agents(db, organization_id, skip=skip, limit=limit, status_filter=status)
+
+
+@router.get("/{agent_id}/workload")
+async def get_workload(
+    agent_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> dict:
+    projects_owned = await db.scalar(
+        select(func.count()).where(
+            Project.owner_agent_id == agent_id,
+            Project.deleted_at.is_(None),
+        )
+    ) or 0
+    tasks_assigned = await db.scalar(
+        select(func.count()).where(
+            Task.assigned_to == agent_id,
+            Task.deleted_at.is_(None),
+        )
+    ) or 0
+    return {"projects_owned": projects_owned, "tasks_assigned": tasks_assigned}
 
 
 @router.get("/{agent_id}", response_model=AgentResponse)

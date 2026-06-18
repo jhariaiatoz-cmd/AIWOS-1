@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from app.models.user import User
     from app.models.task import Task
     from app.models.project_agent import ProjectAgent
+    from app.models.agent import Agent
 
 
 class Project(Base, TimestampMixin, SoftDeleteMixin):
@@ -18,6 +19,7 @@ class Project(Base, TimestampMixin, SoftDeleteMixin):
 
     __table_args__ = (
         Index("idx_projects_org", "organization_id"),
+        Index("idx_projects_owner_agent", "owner_agent_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -42,6 +44,11 @@ class Project(Base, TimestampMixin, SoftDeleteMixin):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
+    owner_agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agents.id", ondelete="SET NULL"),
+        nullable=True
+    )
 
     # Relationships
     organization: Mapped["Organization"] = relationship(
@@ -61,4 +68,9 @@ class Project(Base, TimestampMixin, SoftDeleteMixin):
         "ProjectAgent",
         back_populates="project",
         cascade="all, delete-orphan"
+    )
+    owner_agent: Mapped["Agent | None"] = relationship(
+        "Agent",
+        foreign_keys="[Project.owner_agent_id]",
+        back_populates="owned_projects",
     )

@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.project import Project
 from app.schemas.project import ProjectCreate, ProjectUpdate
@@ -22,6 +23,7 @@ async def create_project(
         description=body.description,
         status=body.status,
         created_by=current_user_id,
+        owner_agent_id=body.owner_agent_id,
     )
     db.add(project)
     try:
@@ -31,14 +33,17 @@ async def create_project(
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid foreign key reference. Ensure organization_id exists.",
+            detail="Invalid foreign key reference. Ensure organization_id and owner_agent_id exist.",
         )
-    return project
+    # Re-fetch with owner_agent eagerly loaded
+    return await get_project(db, project.id)
 
 
 async def get_project(db: AsyncSession, project_id: uuid.UUID) -> Project:
     result = await db.execute(
-        select(Project).where(Project.id == project_id, Project.deleted_at.is_(None))
+        select(Project)
+        .options(selectinload(Project.owner_agent))
+        .where(Project.id == project_id, Project.deleted_at.is_(None))
     )
     project = result.scalar_one_or_none()
     if project is None:
@@ -54,6 +59,7 @@ async def list_projects(
 ) -> List[Project]:
     result = await db.execute(
         select(Project)
+        .options(selectinload(Project.owner_agent))
         .where(Project.organization_id == organization_id, Project.deleted_at.is_(None))
         .order_by(Project.created_at.desc())
         .offset(skip)
@@ -72,8 +78,7 @@ async def update_project(
     for field, value in update_data.items():
         setattr(project, field, value)
     await db.commit()
-    await db.refresh(project)
-    return project
+    return await get_project(db, project_id)
 
 
 async def delete_project(db: AsyncSession, project_id: uuid.UUID) -> None:

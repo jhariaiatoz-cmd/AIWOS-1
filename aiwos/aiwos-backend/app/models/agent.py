@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from app.models.organization import Organization
     from app.models.department import Department
     from app.models.task import Task
+    from app.models.project import Project
     from app.models.project_agent import ProjectAgent
     from app.models.workflow_agent import WorkflowAgent
     from app.models.workflow_step import WorkflowStep
@@ -70,6 +71,11 @@ class Agent(Base, TimestampMixin, SoftDeleteMixin):
     tasks: Mapped[List["Task"]] = relationship(
         "Task",
         back_populates="assigned_agent"
+    )
+    owned_projects: Mapped[List["Project"]] = relationship(
+        "Project",
+        foreign_keys="[Project.owner_agent_id]",
+        back_populates="owner_agent",
     )
     project_assignments: Mapped[List["ProjectAgent"]] = relationship(
         "ProjectAgent",

@@ -1,10 +1,17 @@
 import { apiClient } from "./client";
 
+export type AssignedAgentInfo = {
+  id: string;
+  name: string;
+  role: string;
+};
+
 export type TaskApiResponse = {
   id: string;
   organization_id: string;
   project_id: string;
   assigned_to: string | null;
+  assigned_agent: AssignedAgentInfo | null;
   title: string;
   description: string | null;
   priority: string;
@@ -52,6 +59,18 @@ export const taskApi = {
   ) =>
     apiClient
       .patch<TaskApiResponse>(`/tasks/${id}`, data)
+      .then((r) => r.data),
+
+  createFromProject: (data: {
+    project_id: string;
+    organization_id: string;
+    milestones?: string[];
+    tasks?: string[];
+    priority?: string;
+    owner_agent_id?: string | null;
+  }) =>
+    apiClient
+      .post<{ created: TaskApiResponse[]; count: number }>("/tasks/from-project", data)
       .then((r) => r.data),
 
   delete: (id: string) => apiClient.delete(`/tasks/${id}`),

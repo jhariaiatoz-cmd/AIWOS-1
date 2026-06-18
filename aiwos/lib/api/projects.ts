@@ -1,5 +1,11 @@
 import { apiClient } from "./client";
 
+export type AgentInfo = {
+  id: string;
+  name: string;
+  role: string;
+};
+
 export type ProjectApiResponse = {
   id: string;
   organization_id: string;
@@ -7,6 +13,8 @@ export type ProjectApiResponse = {
   description: string | null;
   status: string;
   created_by: string | null;
+  owner_agent_id: string | null;
+  owner_agent: AgentInfo | null;
   created_at: string;
   updated_at: string;
 };
@@ -29,12 +37,13 @@ export const projectApi = {
     name: string;
     description?: string;
     status?: string;
+    owner_agent_id?: string | null;
   }) =>
     apiClient.post<ProjectApiResponse>("/projects", data).then((r) => r.data),
 
   update: (
     id: string,
-    data: Partial<{ name: string; description: string; status: string }>
+    data: Partial<{ name: string; description: string; status: string; owner_agent_id: string | null }>
   ) =>
     apiClient
       .patch<ProjectApiResponse>(`/projects/${id}`, data)

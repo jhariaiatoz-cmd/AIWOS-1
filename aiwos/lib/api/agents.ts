@@ -68,4 +68,9 @@ export const agentApi = {
       .then((r) => r.data),
 
   delete: (id: string) => apiClient.delete(`/agents/${id}`),
+
+  workload: (agent_id: string) =>
+    apiClient
+      .get<{ projects_owned: number; tasks_assigned: number }>(`/agents/${agent_id}/workload`)
+      .then((r) => r.data),
 };

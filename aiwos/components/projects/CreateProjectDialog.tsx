@@ -12,7 +12,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { projectApi } from "@/lib/api/projects";
+import { taskApi } from "@/lib/api/tasks";
 import { useAuthStore } from "@/lib/store/auth";
+import type { ProjectRecommendationMetadata } from "@/lib/data/chat";
 
 function apiError(err: unknown): string {
   if (err && typeof err === "object" && "response" in err) {
@@ -28,9 +30,18 @@ interface Props {
   onClose: () => void;
   initialName?: string;
   initialDescription?: string;
+  metadata?: ProjectRecommendationMetadata;
+  ownerAgentId?: string;
 }
 
-export function CreateProjectDialog({ open, onClose, initialName, initialDescription }: Props) {
+export function CreateProjectDialog({
+  open,
+  onClose,
+  initialName,
+  initialDescription,
+  metadata,
+  ownerAgentId,
+}: Props) {
   const { currentOrgId } = useAuthStore();
   const queryClient = useQueryClient();
 
@@ -40,8 +51,8 @@ export function CreateProjectDialog({ open, onClose, initialName, initialDescrip
   const [errors, setErrors] = useState<{ name?: string }>({});
   const [apiErr, setApiErr] = useState("");
   const [success, setSuccess] = useState(false);
+  const [taskCount, setTaskCount] = useState(0);
 
-  // Sync prefill values whenever the dialog is opened
   useEffect(() => {
     if (open) {
       setName(initialName ?? "");
@@ -50,22 +61,44 @@ export function CreateProjectDialog({ open, onClose, initialName, initialDescrip
       setErrors({});
       setApiErr("");
       setSuccess(false);
+      setTaskCount(0);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const { mutate, isPending } = useMutation({
-    mutationFn: () =>
-      projectApi.create({
+    mutationFn: async () => {
+      const project = await projectApi.create({
         organization_id: currentOrgId!,
         name: name.trim(),
         description: description.trim() || undefined,
         status,
-      }),
-    onSuccess: () => {
+        owner_agent_id: ownerAgentId ?? null,
+      });
+
+      const milestones = metadata?.milestones ?? [];
+      const tasks = metadata?.tasks ?? [];
+      const priority = metadata?.priority ?? "Medium";
+
+      if ((milestones.length > 0 || tasks.length > 0) && currentOrgId) {
+        const result = await taskApi.createFromProject({
+          project_id: project.id,
+          organization_id: currentOrgId,
+          milestones,
+          tasks,
+          priority,
+          owner_agent_id: ownerAgentId ?? null,
+        });
+        return { project, taskCount: result.count };
+      }
+
+      return { project, taskCount: 0 };
+    },
+    onSuccess: ({ taskCount: count }) => {
       queryClient.invalidateQueries({ queryKey: ["projects", currentOrgId] });
+      setTaskCount(count);
       setSuccess(true);
-      setTimeout(handleClose, 900);
+      setTimeout(handleClose, 1200);
     },
     onError: (err) => setApiErr(apiError(err)),
   });
@@ -78,6 +111,7 @@ export function CreateProjectDialog({ open, onClose, initialName, initialDescrip
     setErrors({});
     setApiErr("");
     setSuccess(false);
+    setTaskCount(0);
     onClose();
   };
 
@@ -121,7 +155,9 @@ export function CreateProjectDialog({ open, onClose, initialName, initialDescrip
               <Check size={22} style={{ color: "var(--green)" }} />
             </div>
             <p className="text-sm font-medium text-foreground">
-              Project created!
+              {taskCount > 0
+                ? `Project and ${taskCount} task${taskCount === 1 ? "" : "s"} created successfully`
+                : "Project created!"}
             </p>
           </div>
         ) : (
@@ -179,6 +215,18 @@ export function CreateProjectDialog({ open, onClose, initialName, initialDescrip
                 <option value="Archived">Archived</option>
               </select>
             </div>
+
+            {metadata && (metadata.milestones.length > 0 || metadata.tasks.length > 0) && (
+              <p className="text-[11px] text-muted-foreground rounded-lg px-3 py-2" style={{ background: "var(--elevated)" }}>
+                {[
+                  metadata.milestones.length > 0 && `${metadata.milestones.length} milestone${metadata.milestones.length === 1 ? "" : "s"}`,
+                  metadata.tasks.length > 0 && `${metadata.tasks.length} task${metadata.tasks.length === 1 ? "" : "s"}`,
+                ]
+                  .filter(Boolean)
+                  .join(" + ")}{" "}
+                will be created automatically.
+              </p>
+            )}
 
             <div
               className="-mx-4 -mb-4 flex flex-row-reverse gap-2 rounded-b-xl border-t px-4 py-3"
