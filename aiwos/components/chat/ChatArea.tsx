@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Send, MessageCircle } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { AgentStatus, Conversation, Message } from "@/lib/data/chat";
 
 interface ChatAreaProps {
@@ -192,7 +194,15 @@ export function ChatArea({
                           }
                     }
                   >
-                    {msg.content}
+                    {isUser ? (
+                      msg.content
+                    ) : (
+                      <div className="aiwos-markdown">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {msg.content}
+                        </ReactMarkdown>
+                      </div>
+                    )}
                   </div>
                   <span
                     className="px-1 text-[10px]"

@@ -165,6 +165,98 @@
   --accent-glow: rgba(124, 58, 237, 0.15);
 }
 
+/* ── Agent markdown rendering ────────────────────────────────────────────── */
+.aiwos-markdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.aiwos-markdown h2 {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--foreground);
+  margin-top: 0.25rem;
+  margin-bottom: 0.125rem;
+}
+
+.aiwos-markdown h3 {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--foreground);
+  margin-top: 0.25rem;
+  margin-bottom: 0.125rem;
+}
+
+.aiwos-markdown p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.aiwos-markdown ul,
+.aiwos-markdown ol {
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.aiwos-markdown ul {
+  list-style-type: disc;
+}
+
+.aiwos-markdown ol {
+  list-style-type: decimal;
+}
+
+.aiwos-markdown li {
+  line-height: 1.6;
+}
+
+.aiwos-markdown strong {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.aiwos-markdown code:not(pre > code) {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+  background: var(--surface);
+  color: var(--purple);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  padding: 0.125rem 0.375rem;
+}
+
+.aiwos-markdown pre {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+}
+
+.aiwos-markdown pre > code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+  background: transparent;
+  color: var(--foreground);
+  border: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+.dark .aiwos-markdown code:not(pre > code) {
+  background: rgba(124, 58, 237, 0.12);
+  color: #a78bfa;
+  border-color: rgba(124, 58, 237, 0.25);
+}
+
+.dark .aiwos-markdown pre {
+  background: #0d0d18;
+  border-color: var(--border-light);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
