@@ -2,14 +2,17 @@ from typing import AsyncGenerator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.pool import NullPool
 from app.core.config import settings
 
-# Supabase's connection pooler (port 6543, PgBouncer transaction mode) does not
-# support prepared statements, so statement caching must be disabled for asyncpg.
+# Supabase uses PgBouncer in transaction mode (port 6543). PgBouncer doesn't clean
+# up asyncpg's server-side prepared statements between transactions, causing
+# DuplicatePreparedStatementError on connection reuse. NullPool makes SQLAlchemy
+# open/close connections per-request so PgBouncer owns all pooling; statement_cache_size=0
+# tells asyncpg not to prepare statements at all.
 async_engine = create_async_engine(
     settings.async_database_url,
-    pool_pre_ping=True,
-    future=True,
+    poolclass=NullPool,
     connect_args={"statement_cache_size": 0},
 )
 
