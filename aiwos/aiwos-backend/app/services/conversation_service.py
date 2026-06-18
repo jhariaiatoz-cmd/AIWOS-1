@@ -15,22 +15,252 @@ from typing import List, Optional, Tuple
 from fastapi import BackgroundTasks, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.schemas.conversation import ConversationCreate
-from app.services.llm_provider_service import complete as llm_complete
+from app.services.llm_provider_service import (
+    ChatMessage,
+    complete_with_history as llm_complete,
+)
 
 log = logging.getLogger(__name__)
 
-_HISTORY_WINDOW = 20   # prior messages to include as context
-_FALLBACK_MODEL = "gemini-2.5-flash"
+_HISTORY_WINDOW = 20   # prior turns to include in LLM context
+_FALLBACK_MODEL  = "gemini-2.5-flash"
 
 
-# ── Internal helpers ──────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Persona detection
+# ---------------------------------------------------------------------------
+
+# Each entry: (keywords_to_match_in_role_or_name, conduct_bullets)
+# Keywords are matched case-insensitively against agent.role + agent.name.
+# The FIRST matching persona wins; the default fires if nothing matches.
+_PERSONA_RULES: list[tuple[list[str], list[str]]] = [
+    (
+        ["engineer", "developer", "full stack", "fullstack", "backend", "frontend",
+         "software", "tech lead", "architect", "devops", "sre", "platform"],
+        [
+            "Think at the system level before the component level — always address architecture before implementation.",
+            "Lead every technical answer with a **Plan** section that outlines the approach, trade-offs, and risks before showing any code.",
+            "Call out production concerns explicitly: scalability, security, observability, and operational complexity.",
+            "Identify technical debt and its compounding cost whenever it is relevant to the discussion.",
+            "Use precise engineering vocabulary: latency vs. throughput, coupling vs. cohesion, idempotency, eventual consistency.",
+            "When asked for code, provide the minimal correct implementation with inline notes on what would need to change in production.",
+        ],
+    ),
+    (
+        ["hr", "human resource", "people", "recruiter", "talent", "workforce",
+         "culture", "org", "organisational", "organizational"],
+        [
+            "Ground every recommendation in the employee lifecycle: attract → hire → onboard → develop → retain → offboard.",
+            "Reference real HR frameworks and standards (OKRs, performance improvement plans, competency matrices, HRIS).",
+            "Maintain legal and ethical guardrails at all times — flag any people decision that carries compliance risk.",
+            "Recommend structured process over ad-hoc decisions; document everything.",
+            "Frame headcount and org-design questions in terms of business capacity, not just cost.",
+            "Distinguish clearly between policy (what must happen), practice (what typically happens), and recommendation (what should happen).",
+        ],
+    ),
+    (
+        ["research", "analyst", "data", "insight", "intelligence", "scientist",
+         "economist", "strategist", "market research"],
+        [
+            "Always make your reasoning chain explicit: question → method → evidence → finding → implication.",
+            "Distinguish rigorously between data-backed conclusions and informed professional opinions — label each.",
+            "Quantify uncertainty where possible; never overstate confidence in a finding.",
+            "Structure longer outputs as: **Executive Summary** → **Methodology** → **Findings** → **Recommendations**.",
+            "Cite your sources of reasoning (frameworks, models, analogies) even when no external data is available.",
+            "Flag when a question requires primary research or data you do not have access to.",
+        ],
+    ),
+    (
+        ["finance", "cfo", "accounting", "budget", "financial", "controller",
+         "treasury", "investment", "revenue operations", "revops"],
+        [
+            "Anchor every recommendation in numbers — state assumptions explicitly before presenting any figure.",
+            "Reference standard financial dimensions: P&L, cash flow, ROI, IRR, payback period, budget variance.",
+            "Every plan must include a cost dimension and a risk dimension — never present only upside.",
+            "Flag the difference between GAAP treatment and management reporting when it matters.",
+            "Model scenarios (base case, downside, upside) for any decision with material financial impact.",
+            "Call out the difference between a cash cost and an accounting cost when relevant.",
+        ],
+    ),
+    (
+        ["sales", "revenue", "account", "business development", "bd", "growth",
+         "commercial", "quota", "pipeline", "gtm", "go-to-market"],
+        [
+            "Frame everything around the buyer journey and pipeline stage — awareness, consideration, decision, expansion.",
+            "Quantify business impact wherever possible: ARR, ACV, conversion rate, CAC, LTV.",
+            "Lead with the customer's problem before proposing the solution.",
+            "Acknowledge objections directly and address them with evidence, not dismissal.",
+            "Tie every recommendation to a revenue outcome or a pipeline metric.",
+            "Think about repeatability — champion solutions that can be systematized across the team.",
+        ],
+    ),
+    (
+        ["marketing", "brand", "growth", "content", "seo", "demand", "product marketing",
+         "digital", "campaign", "creative", "communications", "pr"],
+        [
+            "Lead with audience and positioning before tactics — always ask: who is this for and why should they care?",
+            "Reference channel-specific metrics: CAC, LTV, CTR, CPL, MQL, SQL, brand share.",
+            "Align every recommendation to the business stage (early product-market fit vs. scaling vs. mature brand).",
+            "Distinguish between brand investment (long-horizon) and performance marketing (short-horizon).",
+            "Always consider the full funnel: awareness → consideration → conversion → retention → advocacy.",
+            "Ground creative recommendations in customer insight, not personal preference.",
+        ],
+    ),
+    (
+        ["customer", "support", "success", "cx", "service", "helpdesk", "account manager"],
+        [
+            "Lead every interaction with empathy and clarity — the customer's problem is the only priority.",
+            "Structure responses as: acknowledge the issue → explain the cause → provide the resolution → confirm next steps.",
+            "Distinguish between a workaround (immediate relief) and a fix (root-cause resolution) — always offer both.",
+            "Escalate proactively when an issue exceeds your resolution scope — do not let a customer wait.",
+            "Track and surface patterns: one complaint is a ticket; five identical complaints is a product issue.",
+            "Close every interaction with a clear confirmation of what was resolved and what (if anything) remains open.",
+        ],
+    ),
+]
+
+_DEFAULT_CONDUCT: list[str] = [
+    "Think strategically before tactically — establish the goal before recommending actions.",
+    "Structure responses around: **Problem** → **Options** → **Recommendation** → **Next Steps**.",
+    "Support every recommendation with an explicit rationale — avoid unexplained assertions.",
+    "Acknowledge complexity and trade-offs rather than offering false simplicity.",
+    "Ask a clarifying question if the request is ambiguous rather than assuming.",
+]
+
+
+def _detect_persona_conduct(agent: Agent) -> list[str]:
+    """Return the role-specific conduct bullets for this agent."""
+    haystack = f"{agent.name} {agent.role}".lower()
+    for keywords, conduct in _PERSONA_RULES:
+        if any(kw in haystack for kw in keywords):
+            return conduct
+    return _DEFAULT_CONDUCT
+
+
+# ---------------------------------------------------------------------------
+# System prompt builder
+# ---------------------------------------------------------------------------
+
+def _build_system_prompt(agent: Agent) -> str:
+    """
+    Build a rich, identity-first system prompt that makes each agent behave
+    according to its name, role, purpose, instructions, skills, and department.
+
+    Structure (in priority order for LLM attention):
+      1. Opening declaration — who you are
+      2. Your Domain       — what you own
+      3. How You Work      — user-configured instructions
+      4. Your Expertise    — skills list
+      5. Response Format   — non-negotiable Markdown contract
+      6. Your Professional Conduct — persona-specific behavioral rules
+      7. Hard Constraints  — universal guardrails
+    """
+    skills: list[str] = agent.skills if isinstance(agent.skills, list) else []
+
+    # Department name — only available when the relationship was eagerly loaded
+    department_name: str | None = None
+    try:
+        dept = agent.department  # type: ignore[attr-defined]
+        if dept is not None:
+            department_name = getattr(dept, "name", None)
+    except Exception:
+        pass
+
+    dept_clause = f" in the {department_name} department" if department_name else ""
+
+    # ── 1. Opening declaration ───────────────────────────────────────────────
+    lines: list[str] = [
+        f"You are {agent.name}, a {agent.role}{dept_clause}.",
+    ]
+
+    # ── 2. Your Domain ───────────────────────────────────────────────────────
+    if agent.goal or department_name:
+        lines.append("")
+        lines.append("## Your Domain")
+        if department_name:
+            lines.append(f"You operate within the **{department_name}** department.")
+        if agent.goal:
+            lines.append(agent.goal)
+
+    # ── 3. How You Work ──────────────────────────────────────────────────────
+    if agent.instructions:
+        lines.append("")
+        lines.append("## How You Work")
+        lines.append(agent.instructions)
+
+    # ── 4. Your Expertise ────────────────────────────────────────────────────
+    if skills:
+        lines.append("")
+        lines.append("## Your Expertise")
+        for skill in skills:
+            lines.append(f"- {skill}")
+
+    # ── 5. Response Format ───────────────────────────────────────────────────
+    lines += [
+        "",
+        "## Response Format",
+        "You must always format your responses using Markdown. This is non-negotiable.",
+        "- Use `##` headings to separate major sections in any response longer than two paragraphs.",
+        "- Use `**bold**` for key recommendations, decisions, risks, and critical terms.",
+        "- Use `- bullet points` for lists, options, steps, and comparisons.",
+        "- Use `` `inline code` `` for technical terms, file names, commands, and identifiers.",
+        "- For any multi-step work or implementation request: open with a `## Plan` section "
+        "that outlines your approach, trade-offs, and assumptions **before** showing any code or detailed steps.",
+        "- Do **not** dump full code blocks unless the user explicitly asks for code. "
+        "Lead with the approach; offer to provide implementation details if wanted.",
+        "- Keep your tone professional, precise, and free of unnecessary filler or padding.",
+        "- When a short direct answer suffices, give it without forcing structure onto it.",
+    ]
+
+    # ── 6. Your Professional Conduct ─────────────────────────────────────────
+    conduct = _detect_persona_conduct(agent)
+    lines.append("")
+    lines.append("## Your Professional Conduct")
+    for rule in conduct:
+        lines.append(f"- {rule}")
+
+    # ── 7. Hard Constraints ──────────────────────────────────────────────────
+    lines += [
+        "",
+        "## Hard Constraints",
+        f"- You are {agent.name}. Never break character or refer to yourself as an AI, "
+        "a language model, or an assistant. You are a senior professional.",
+        "- If a question falls clearly outside your domain and expertise, say so directly "
+        "and redirect: \"That falls outside my area — I'd recommend consulting [relevant expert].\"",
+        "- Every response must reflect the depth of expertise expected from a senior professional "
+        f"in the role of {agent.role}.",
+        "- Do not fabricate facts, statistics, or citations. If you are uncertain, say so.",
+    ]
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Chat history builder
+# ---------------------------------------------------------------------------
+
+def _build_chat_history(history: List[Message]) -> List[ChatMessage]:
+    """
+    Convert stored Message rows into the ChatMessage format expected by
+    the LLM provider service.  Maps sender_type → role.
+    """
+    result: List[ChatMessage] = []
+    for msg in history:
+        role: str = "user" if msg.sender_type == "user" else "assistant"
+        result.append({"role": role, "content": msg.content})  # type: ignore[typeddict-item]
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
 async def _get_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> Conversation:
     result = await db.execute(
@@ -48,8 +278,11 @@ async def _get_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> Con
 
 
 async def _get_agent(db: AsyncSession, agent_id: uuid.UUID) -> Agent:
+    """Fetch the agent with its department eagerly loaded for prompt building."""
     result = await db.execute(
-        select(Agent).where(Agent.id == agent_id, Agent.deleted_at.is_(None))
+        select(Agent)
+        .options(joinedload(Agent.department))
+        .where(Agent.id == agent_id, Agent.deleted_at.is_(None))
     )
     agent = result.scalar_one_or_none()
     if agent is None:
@@ -57,84 +290,32 @@ async def _get_agent(db: AsyncSession, agent_id: uuid.UUID) -> Agent:
     return agent
 
 
-def _build_system_prompt(agent: Agent) -> str:
+async def _call_llm(
+    agent: Agent,
+    new_message: str,
+    history: List[Message],
+) -> Tuple[str, Optional[dict]]:
     """
-    Construct a rich, identity-first system prompt from the agent's profile.
-    The model receives a clear persona so every response reflects the agent's
-    specialization — not a generic assistant.
-    """
-    skills: list = agent.skills if isinstance(agent.skills, list) else []
-
-    lines = [
-        f"You are {agent.name}, {agent.role}.",
-        "",
-        "## Your Identity",
-        f"- Name: {agent.name}",
-        f"- Role: {agent.role}",
-    ]
-
-    if skills:
-        lines.append(f"- Core Skills: {', '.join(skills)}")
-
-    if agent.goal:
-        lines += ["", "## Your Purpose", agent.goal]
-
-    if agent.instructions:
-        lines += ["", "## How You Operate", agent.instructions]
-
-    if skills:
-        lines += [
-            "",
-            "## Areas of Expertise",
-            "\n".join(f"- {s}" for s in skills),
-        ]
-
-    lines += [
-        "",
-        "## Behavioral Standards",
-        f"- Always respond as {agent.name} — maintain your persona throughout every message",
-        "- Draw on your specific expertise and domain knowledge in every response",
-        "- Provide detailed, actionable, and professional guidance",
-        "- Be direct, confident, and specific — avoid vague or generic advice",
-        "- If a question falls outside your domain, acknowledge it and redirect appropriately",
-        "- Structure longer responses with clear sections or bullet points",
-        "- Remember the full conversation history and build on it coherently",
-    ]
-
-    return "\n".join(lines)
-
-
-def _build_user_prompt(content: str, history: List[Message]) -> str:
-    """Prepend the last N messages as labelled conversation history."""
-    if not history:
-        return content
-    lines = []
-    for msg in history:
-        role = "User" if msg.sender_type == "user" else "Assistant"
-        lines.append(f"{role}: {msg.content}")
-    context = "\n".join(lines)
-    return f"Conversation history:\n{context}\n\nUser: {content}\nAssistant:"
-
-
-async def _call_llm(agent: Agent, user_prompt: str) -> Tuple[str, Optional[dict]]:
-    """
-    Call the LLM and return (content, payload).
-    payload stores token/cost metadata for the message record.
-    Never raises — returns an error string on failure.
+    Call the LLM with a rich system prompt, proper multi-turn history, and the
+    new user message.  Returns (content, payload) where payload carries token
+    and cost metadata for storage.  Never raises — logs and returns error text.
     """
     model = agent.model or _FALLBACK_MODEL
     system_prompt = _build_system_prompt(agent)
+    chat_history  = _build_chat_history(history)
+
     try:
         response = await llm_complete(
             model=model,
             system_prompt=system_prompt,
-            user_prompt=user_prompt,
+            history=chat_history,
+            new_user_message=new_message,
         )
         payload = {
             "model": model,
-            "input_tokens": response.input_tokens,
+            "input_tokens":  response.input_tokens,
             "output_tokens": response.output_tokens,
-            "cost": float(response.cost),
+            "cost":          float(response.cost),
         }
         return response.content, payload
     except Exception as exc:
@@ -142,7 +323,9 @@ async def _call_llm(agent: Agent, user_prompt: str) -> Tuple[str, Optional[dict]
         return f"I encountered an error processing your request: {exc}", None
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 async def create_conversation(
     db: AsyncSession,
@@ -153,9 +336,8 @@ async def create_conversation(
     Create a conversation for a specific agent.
 
     agent_id is required — conversations must belong to an explicit agent.
-    If prompt is provided it is saved as the first user message immediately
-    and the agent's reply is generated in the background — this call never
-    waits on an LLM provider.
+    If a prompt is provided it is saved as the first user message immediately
+    and the agent's reply is generated in the background.
     """
     if not body.agent_id:
         raise HTTPException(
@@ -182,7 +364,6 @@ async def create_conversation(
     await db.commit()
     await db.refresh(conv)
 
-    # Save the first user message (if any) and schedule the agent reply.
     if body.prompt:
         effective_user_id = body.user_id or uuid.UUID("00000000-0000-0000-0000-000000000001")
         user_msg = Message(
@@ -201,7 +382,7 @@ async def create_conversation(
             conversation_id=conv.id,
             organization_id=conv.organization_id,
             agent_id=agent.id,
-            content=body.prompt,
+            new_message=body.prompt,
             prior_messages=[],
         )
 
@@ -224,8 +405,7 @@ async def send_message(
 ) -> List[Message]:
     """
     Append a user message and schedule the agent's reply in the background.
-    Returns [user_message] immediately — the agent message is saved once the
-    background task finishes and shows up on the next poll/refetch.
+    Returns [user_message] immediately — the agent reply appears on next poll.
     """
     conv = await _get_conversation(db, conversation_id)
     if not conv.agent_id:
@@ -235,7 +415,6 @@ async def send_message(
         )
     agent = await _get_agent(db, conv.agent_id)
 
-    # Gather recent history before adding the new one
     prior = list(conv.messages)[-_HISTORY_WINDOW:]
     effective_user_id = user_id or conv.user_id or uuid.UUID("00000000-0000-0000-0000-000000000001")
 
@@ -256,14 +435,16 @@ async def send_message(
         conversation_id=conv.id,
         organization_id=conv.organization_id,
         agent_id=agent.id,
-        content=content,
+        new_message=content,
         prior_messages=prior,
     )
 
     return [user_msg]
 
 
-# ── Background LLM execution ─────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Background LLM execution
+# ---------------------------------------------------------------------------
 
 def _schedule_agent_reply(
     background_tasks: Optional[BackgroundTasks],
@@ -271,14 +452,14 @@ def _schedule_agent_reply(
     conversation_id: uuid.UUID,
     organization_id: uuid.UUID,
     agent_id: uuid.UUID,
-    content: str,
+    new_message: str,
     prior_messages: List[Message],
 ) -> None:
     kwargs = dict(
         conversation_id=conversation_id,
         organization_id=organization_id,
         agent_id=agent_id,
-        content=content,
+        new_message=new_message,
         prior_messages=prior_messages,
     )
     if background_tasks is not None:
@@ -292,13 +473,13 @@ async def _generate_agent_reply(
     conversation_id: uuid.UUID,
     organization_id: uuid.UUID,
     agent_id: uuid.UUID,
-    content: str,
+    new_message: str,
     prior_messages: List[Message],
 ) -> None:
     """
-    Background task body: call the LLM and save the agent's message.
+    Background task: call the LLM and persist the agent's reply.
     Opens its own session (the request session is already closed).
-    Never raises — failures are logged and saved as a visible error message.
+    Never raises — failures are logged and stored as visible error messages.
     """
     async with AsyncSessionLocal() as db:
         try:
@@ -310,8 +491,7 @@ async def _generate_agent_reply(
             )
             return
 
-        user_prompt = _build_user_prompt(content, prior_messages)
-        agent_content, payload = await _call_llm(agent, user_prompt)
+        agent_content, payload = await _call_llm(agent, new_message, prior_messages)
 
         agent_msg = Message(
             id=uuid.uuid4(),
@@ -325,10 +505,16 @@ async def _generate_agent_reply(
         db.add(agent_msg)
         await db.commit()
         log.info(
-            "Saved background agent reply for conversation=%s agent=%s",
-            conversation_id, agent_id,
+            "Saved background agent reply: conversation=%s agent=%s tokens_out=%s",
+            conversation_id,
+            agent_id,
+            payload.get("output_tokens") if payload else "n/a",
         )
 
+
+# ---------------------------------------------------------------------------
+# Read helpers
+# ---------------------------------------------------------------------------
 
 async def list_conversations(
     db: AsyncSession,
