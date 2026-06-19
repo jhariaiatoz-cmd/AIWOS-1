@@ -66,6 +66,7 @@ async def create_from_project(
         priority=body.priority,
         owner_agent_id=body.owner_agent_id,
         agents=agents,
+        phase_tasks=[pt.model_dump() for pt in body.phase_tasks] if body.phase_tasks else None,
     )
     return {"created": created, "count": len(created)}
 

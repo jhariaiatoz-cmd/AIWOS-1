@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CONVERSATIONS, MESSAGES } from "@/lib/data/chat";
-import type { Message, Conversation, ProjectRecommendationMetadata, ProjectPriority, ProjectComplexity } from "@/lib/data/chat";
+import type { Message, Conversation, ProjectRecommendationMetadata, ProjectPriority, ProjectComplexity, PhaseTask, ProjectPhase } from "@/lib/data/chat";
 import { ConversationSidebar, avatarGradient, agentInitials } from "@/components/chat/ConversationSidebar";
 import { ChatArea } from "@/components/chat/ChatArea";
 import { useAuthStore } from "@/lib/store/auth";
@@ -63,28 +63,79 @@ function _extractComplexity(content: string, taskCount: number): ProjectComplexi
   return "Medium";
 }
 
-// ── Milestones ────────────────────────────────────────────────────────────────
+// ── Phase extraction ──────────────────────────────────────────────────────────
 
-// Matches ### subheadings that look like phases/milestones/sprints
-const _MILESTONE_H3_RE = /^###\s+(.+)/gm;
-// Matches bold inline labels like **Phase 1: Setup** or **Milestone 2 —**
-const _MILESTONE_BOLD_RE =
-  /\*\*((?:phase|milestone|stage|sprint|week|month|step|q[1-4])\s*[\d.:\-–—][^*\n]{0,60})\*\*/gi;
+const PHASE_ROLE_MAP: Record<ProjectPhase, string> = {
+  Research:    "Research Analyst",
+  Design:      "UI/UX Designer",
+  Development: "Full Stack Engineer",
+  Testing:     "QA Engineer",
+  Deployment:  "DevOps Engineer",
+};
 
-function _extractMilestones(planSection: string): string[] {
-  const results: string[] = [];
+const PHASE_KEYWORDS: Record<ProjectPhase, string[]> = {
+  Research:    ["research", "analys", "requirement", "discovery", "stakeholder", "survey", "market", "feasibility", "audit", "gather"],
+  Design:      ["design", "wireframe", "prototype", "ui ", " ux", "figma", "mockup", "schema", "blueprint", "layout", "architecture"],
+  Development: ["develop", "implement", "build", "code", "feature", "module", "api", "backend", "frontend", "integration", "database", "engineer"],
+  Testing:     ["test", " qa", "quality", "validation", "bug", "unit test", "e2e", "uat", "regression", "selenium"],
+  Deployment:  ["deploy", "launch", "production", "devops", "infra", "ci/cd", "pipeline", "docker", "kubernetes", "hosting", "release", "cloud"],
+};
 
-  // Prefer ### subheadings within the plan section
-  for (const m of planSection.matchAll(_MILESTONE_H3_RE)) {
-    results.push(m[1].trim().replace(/\*\*/g, ""));
+function _inferPhase(text: string): ProjectPhase {
+  const lower = text.toLowerCase();
+  for (const phase of ["Research", "Design", "Development", "Testing", "Deployment"] as ProjectPhase[]) {
+    if (PHASE_KEYWORDS[phase].some((kw) => lower.includes(kw))) return phase;
   }
-  if (results.length > 0) return results.slice(0, 5);
+  return "Development";
+}
 
-  // Fall back to bold phase/milestone labels
-  for (const m of planSection.matchAll(_MILESTONE_BOLD_RE)) {
-    results.push(m[1].trim());
+function _mapHeadingToPhase(heading: string): ProjectPhase | null {
+  const lower = heading.toLowerCase();
+  if (/research|discover|analys|requirement/.test(lower)) return "Research";
+  if (/design|wireframe|ux|ui|prototype/.test(lower)) return "Design";
+  if (/develop|implement|build|code|engineer/.test(lower)) return "Development";
+  if (/test|qa|quality|validation/.test(lower)) return "Testing";
+  if (/deploy|launch|production|release|devops|infra/.test(lower)) return "Deployment";
+  return null;
+}
+
+// Extract work packages / deliverables from the plan section only.
+// Does NOT read ## Risks, ## Analysis, ## Next Actions, ## Recommendations.
+function _extractPhaseTasks(planSection: string): PhaseTask[] {
+  const lines = planSection.split("\n");
+  const results: PhaseTask[] = [];
+  let currentPhase: ProjectPhase | null = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // ### Phase heading
+    if (trimmed.startsWith("###")) {
+      const mapped = _mapHeadingToPhase(trimmed.replace(/^#+\s*/, ""));
+      if (mapped) currentPhase = mapped;
+      continue;
+    }
+
+    // **Bold phase label** — e.g. **Phase 1: Research** or **Design Phase**
+    const boldPhaseMatch = trimmed.match(/^\*\*((?:phase\s*[\d.]+[\s:—–-]+)?[\w /]+(?:phase)?)\*\*/i);
+    if (boldPhaseMatch) {
+      const mapped = _mapHeadingToPhase(boldPhaseMatch[1]);
+      if (mapped) { currentPhase = mapped; continue; }
+    }
+
+    // Numbered or bulleted work package / deliverable
+    const bulletMatch = trimmed.match(/^(?:[-*•]|\d+\.)\s+(.+)/);
+    if (!bulletMatch) continue;
+
+    const title = bulletMatch[1].replace(/\*\*/g, "").replace(/\[.*?\]/g, "").trim();
+    if (title.length < 4) continue;
+
+    const phase = currentPhase ?? _inferPhase(title);
+    results.push({ title, phase, suggested_role: PHASE_ROLE_MAP[phase] });
   }
-  return results.slice(0, 5);
+
+  return results.slice(0, 15);
 }
 
 // ── Main detector ─────────────────────────────────────────────────────────────
@@ -103,19 +154,34 @@ function detectProjectRecommendation(
     /^##\s+(recommended\s+plan|implementation\s+plan|action\s+plan|plan)\b/im.test(content);
   if (!hasPlanSection) return null;
 
-  // Isolate the plan section body (up to the next ## heading) for targeted extraction
-  const planMatch = content.match(
-    /^##\s+(?:recommended\s+|implementation\s+|action\s+)?plan\b[^\n]*\n([\s\S]*?)(?=^##\s+|$)/im,
-  );
-  const planSection = planMatch?.[1] ?? content;
+  // Isolate the plan section body only (stop at next ## heading).
+  // This ensures we never pull bullets from ## Risks, ## Analysis, etc.
+  // NOTE: The previous regex used $ with the m flag, which caused $ to match at every
+  // line ending. Combined with the lazy [\s\S]*?, the capture stopped after 0–1 lines,
+  // making planSection empty or a single heading with no bullet tasks.
+  // Fix: locate the heading via search(), skip its line, then find the next ## boundary
+  // using a plain string indexOf so multiline flag semantics can't interfere.
+  const planHeadingRe = /^##\s+(?:recommended\s+|implementation\s+|action\s+)?plan\b[^\n]*/im;
+  const planHeadingMatch = content.match(planHeadingRe);
+  let planSection = "";
+  if (planHeadingMatch && planHeadingMatch.index !== undefined) {
+    const afterHeading = content.slice(planHeadingMatch.index + planHeadingMatch[0].length);
+    const nextSectionMatch = afterHeading.match(/\n^##\s/m);
+    planSection = nextSectionMatch
+      ? afterHeading.slice(0, nextSectionMatch.index!)
+      : afterHeading;
+  }
 
-  // Bullets sourced from the plan section; fall back to full doc if plan had none
-  const planBullets = planSection.match(/^[-*]\s+\S[^\n]*/gm) ?? [];
-  const allBullets = planBullets.length >= 3
-    ? planBullets
-    : (content.match(/^[-*]\s+\S[^\n]*/gm) ?? []);
+  console.debug("[ProjectRec] planSection length:", planSection.length);
 
-  if (allBullets.length < 3) return null;
+  if (!planSection.trim()) return null;
+
+  // Extract structured phase tasks from work packages / deliverables in the plan section
+  const phases = _extractPhaseTasks(planSection);
+
+  console.debug("[ProjectRec] phases count:", phases.length, "| tasks count:", phases.length);
+
+  if (phases.length < 2) return null;
 
   // Project name: first ## heading that isn't a standard section name
   let name = "New Project";
@@ -131,15 +197,20 @@ function detectProjectRecommendation(
   const descMatch = content.match(/^(?!#)(?![-*\d])([A-Z][^\n]{19,})/m);
   const description = descMatch?.[1]?.trim() ?? "";
 
-  const tasks = allBullets
-    .slice(0, 6)
-    .map((item) => item.replace(/^[-*]\s+/, "").replace(/\*\*/g, "").trim());
+  // Derive flat milestones from unique phase names (for backward compat display)
+  const seenPhases = new Set<string>();
+  const milestones: string[] = [];
+  for (const pt of phases) {
+    if (!seenPhases.has(pt.phase)) { seenPhases.add(pt.phase); milestones.push(`${pt.phase} Phase`); }
+  }
 
-  const milestones = _extractMilestones(planSection);
+  // Flat tasks list for backward compat (e.g. legacy CreateProjectDialog path)
+  const tasks = phases.map((pt) => pt.title);
+
   const priority = _extractPriority(content, userMessage);
-  const complexity = _extractComplexity(content, tasks.length);
+  const complexity = _extractComplexity(content, phases.length);
 
-  return { type: "project_recommendation", name, description, milestones, tasks, priority, complexity };
+  return { type: "project_recommendation", name, description, milestones, tasks, phases, priority, complexity };
 }
 
 // ---------------------------------------------------------------------------

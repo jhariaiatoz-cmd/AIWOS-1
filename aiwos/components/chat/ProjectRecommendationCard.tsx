@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { FolderPlus, CheckSquare, ChevronRight, Flag, Layers } from "lucide-react";
+import { FolderPlus, CheckSquare, ChevronRight, Flag, Layers, FlaskConical, Pen, Code2, TestTube2, Rocket } from "lucide-react";
 import { CreateProjectDialog } from "@/components/projects/CreateProjectDialog";
-import type { ProjectRecommendationMetadata } from "@/lib/data/chat";
+import type { ProjectRecommendationMetadata, ProjectPhase } from "@/lib/data/chat";
 
 interface Props {
   metadata: ProjectRecommendationMetadata;
@@ -25,6 +25,24 @@ function buildPrefillDescription(m: ProjectRecommendationMetadata): string {
   parts.push(`\nPriority: ${m.priority}  |  Complexity: ${m.complexity}`);
   return parts.join("\n").trim();
 }
+
+const PHASE_ICONS: Record<ProjectPhase, React.ReactNode> = {
+  Research:    <FlaskConical size={9} />,
+  Design:      <Pen size={9} />,
+  Development: <Code2 size={9} />,
+  Testing:     <TestTube2 size={9} />,
+  Deployment:  <Rocket size={9} />,
+};
+
+const PHASE_COLORS: Record<ProjectPhase, { bg: string; text: string }> = {
+  Research:    { bg: "rgba(99,102,241,0.10)",  text: "#6366f1" },
+  Design:      { bg: "rgba(236,72,153,0.10)",  text: "var(--pink, #ec4899)" },
+  Development: { bg: "rgba(6,182,212,0.10)",   text: "var(--cyan)" },
+  Testing:     { bg: "rgba(245,158,11,0.10)",  text: "var(--amber)" },
+  Deployment:  { bg: "rgba(16,185,129,0.10)",  text: "var(--green)" },
+};
+
+const PHASE_ORDER: ProjectPhase[] = ["Research", "Design", "Development", "Testing", "Deployment"];
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
   High:   { bg: "rgba(239,68,68,0.10)",   text: "var(--red)"    },
@@ -96,53 +114,77 @@ export function ProjectRecommendationCard({ metadata, agentId }: Props) {
           </p>
         )}
 
-        {/* Milestones */}
-        {metadata.milestones.length > 0 && (
-          <div className="px-3.5 pt-2.5 pb-0">
-            <p
-              className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide"
-              style={{ color: "var(--faint)" }}
-            >
-              Milestones
-            </p>
-            <ol className="flex flex-col gap-1">
-              {metadata.milestones.map((ms, i) => (
-                <li key={i} className="flex items-start gap-2 text-[12px] text-foreground">
-                  <span
-                    className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
-                    style={{ background: "var(--purple)" }}
-                  >
-                    {i + 1}
-                  </span>
-                  <span className="leading-relaxed">{ms}</span>
-                </li>
-              ))}
-            </ol>
+        {/* Phase-grouped tasks (new structured view) */}
+        {metadata.phases && metadata.phases.length > 0 ? (
+          <div className="px-3.5 pt-2.5 pb-1 flex flex-col gap-2.5">
+            {PHASE_ORDER.filter((ph) => metadata.phases.some((pt) => pt.phase === ph)).map((phase) => {
+              const phaseTasks = metadata.phases.filter((pt) => pt.phase === phase);
+              const color = PHASE_COLORS[phase];
+              return (
+                <div key={phase}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span
+                      className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+                      style={{ background: color.bg, color: color.text }}
+                    >
+                      {PHASE_ICONS[phase]}
+                      {phase}
+                    </span>
+                    <span className="text-[10px]" style={{ color: "var(--faint)" }}>
+                      {phaseTasks[0].suggested_role}
+                    </span>
+                  </div>
+                  <ul className="flex flex-col gap-1 pl-1">
+                    {phaseTasks.map((pt, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-[12px] text-foreground">
+                        <CheckSquare size={11} className="mt-0.5 shrink-0" style={{ color: color.text }} />
+                        <span className="leading-relaxed">{pt.title}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
           </div>
-        )}
-
-        {/* Tasks */}
-        {metadata.tasks.length > 0 && (
-          <div className="px-3.5 py-2.5">
-            <p
-              className="mb-2 text-[10px] font-semibold uppercase tracking-wide"
-              style={{ color: "var(--faint)" }}
-            >
-              Suggested Tasks
-            </p>
-            <ul className="flex flex-col gap-1.5">
-              {metadata.tasks.map((task, i) => (
-                <li key={i} className="flex items-start gap-2 text-[12px] text-foreground">
-                  <CheckSquare
-                    size={13}
-                    className="mt-0.5 shrink-0"
-                    style={{ color: "var(--purple)" }}
-                  />
-                  <span className="leading-relaxed">{task}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+        ) : (
+          <>
+            {/* Legacy flat milestones/tasks fallback */}
+            {metadata.milestones.length > 0 && (
+              <div className="px-3.5 pt-2.5 pb-0">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--faint)" }}>
+                  Milestones
+                </p>
+                <ol className="flex flex-col gap-1">
+                  {metadata.milestones.map((ms, i) => (
+                    <li key={i} className="flex items-start gap-2 text-[12px] text-foreground">
+                      <span
+                        className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
+                        style={{ background: "var(--purple)" }}
+                      >
+                        {i + 1}
+                      </span>
+                      <span className="leading-relaxed">{ms}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+            {metadata.tasks.length > 0 && (
+              <div className="px-3.5 py-2.5">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--faint)" }}>
+                  Suggested Tasks
+                </p>
+                <ul className="flex flex-col gap-1.5">
+                  {metadata.tasks.map((task, i) => (
+                    <li key={i} className="flex items-start gap-2 text-[12px] text-foreground">
+                      <CheckSquare size={13} className="mt-0.5 shrink-0" style={{ color: "var(--purple)" }} />
+                      <span className="leading-relaxed">{task}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
         )}
 
         {/* Footer */}

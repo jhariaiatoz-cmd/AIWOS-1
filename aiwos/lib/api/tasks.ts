@@ -16,6 +16,7 @@ export type TaskApiResponse = {
   description: string | null;
   priority: string;
   status: string;
+  phase: string | null;
   due_date: string | null;
   completed_at: string | null;
   created_at: string;
@@ -66,6 +67,7 @@ export const taskApi = {
     organization_id: string;
     milestones?: string[];
     tasks?: string[];
+    phase_tasks?: { title: string; description?: string; phase?: string; suggested_role?: string }[];
     priority?: string;
     owner_agent_id?: string | null;
   }) =>

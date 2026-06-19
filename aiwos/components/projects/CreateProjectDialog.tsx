@@ -76,16 +76,18 @@ export function CreateProjectDialog({
         owner_agent_id: ownerAgentId ?? null,
       });
 
+      const phaseTasks = metadata?.phases ?? [];
       const milestones = metadata?.milestones ?? [];
       const tasks = metadata?.tasks ?? [];
       const priority = metadata?.priority ?? "Medium";
 
-      if ((milestones.length > 0 || tasks.length > 0) && currentOrgId) {
+      if ((phaseTasks.length > 0 || milestones.length > 0 || tasks.length > 0) && currentOrgId) {
         const result = await taskApi.createFromProject({
           project_id: project.id,
           organization_id: currentOrgId,
-          milestones,
-          tasks,
+          ...(phaseTasks.length > 0
+            ? { phase_tasks: phaseTasks }
+            : { milestones, tasks }),
           priority,
           owner_agent_id: ownerAgentId ?? null,
         });
@@ -216,15 +218,16 @@ export function CreateProjectDialog({
               </select>
             </div>
 
-            {metadata && (metadata.milestones.length > 0 || metadata.tasks.length > 0) && (
+            {metadata && (metadata.phases?.length > 0 || metadata.milestones.length > 0 || metadata.tasks.length > 0) && (
               <p className="text-[11px] text-muted-foreground rounded-lg px-3 py-2" style={{ background: "var(--elevated)" }}>
-                {[
-                  metadata.milestones.length > 0 && `${metadata.milestones.length} milestone${metadata.milestones.length === 1 ? "" : "s"}`,
-                  metadata.tasks.length > 0 && `${metadata.tasks.length} task${metadata.tasks.length === 1 ? "" : "s"}`,
-                ]
-                  .filter(Boolean)
-                  .join(" + ")}{" "}
-                will be created automatically.
+                {metadata.phases?.length > 0
+                  ? `${metadata.phases.length} task${metadata.phases.length === 1 ? "" : "s"} across ${new Set(metadata.phases.map((p) => p.phase)).size} phase${new Set(metadata.phases.map((p) => p.phase)).size === 1 ? "" : "s"} will be created automatically.`
+                  : [
+                      metadata.milestones.length > 0 && `${metadata.milestones.length} milestone${metadata.milestones.length === 1 ? "" : "s"}`,
+                      metadata.tasks.length > 0 && `${metadata.tasks.length} task${metadata.tasks.length === 1 ? "" : "s"}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" + ") + " will be created automatically."}
               </p>
             )}
 

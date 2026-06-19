@@ -15,6 +15,14 @@ export interface Conversation {
 
 export type ProjectPriority = "High" | "Medium" | "Low";
 export type ProjectComplexity = "High" | "Medium" | "Low";
+export type ProjectPhase = "Research" | "Design" | "Development" | "Testing" | "Deployment";
+
+export interface PhaseTask {
+  title: string;
+  description?: string;
+  phase: ProjectPhase;
+  suggested_role: string;
+}
 
 export interface ProjectRecommendationMetadata {
   type: "project_recommendation";
@@ -22,6 +30,7 @@ export interface ProjectRecommendationMetadata {
   description: string;
   milestones: string[];
   tasks: string[];
+  phases: PhaseTask[];  // structured phase tasks; empty for legacy recommendations
   priority: ProjectPriority;
   complexity: ProjectComplexity;
 }

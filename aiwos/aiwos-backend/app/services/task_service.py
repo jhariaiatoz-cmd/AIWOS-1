@@ -1,5 +1,5 @@
 import uuid
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -14,6 +14,31 @@ from app.services.task_assignment_service import assign_task
 if TYPE_CHECKING:
     from app.models.agent import Agent
 
+# Deterministic phase → specialist role mapping
+PHASE_ROLE_MAP: Dict[str, str] = {
+    "Research": "Research Analyst",
+    "Design": "UI/UX Designer",
+    "Development": "Full Stack Engineer",
+    "Testing": "QA Engineer",
+    "Deployment": "DevOps Engineer",
+}
+
+
+def _find_agent_by_role(target_role: str, agents: "List[Agent]") -> "Optional[uuid.UUID]":
+    """Return the first agent whose role contains the target role keywords."""
+    target_lower = target_role.lower()
+    # Exact or substring match first
+    for agent in agents:
+        if target_lower in (agent.role or "").lower():
+            return agent.id
+    # Partial keyword match as fallback
+    keywords = [w for w in target_lower.split() if len(w) > 3]
+    for agent in agents:
+        role_lower = (agent.role or "").lower()
+        if any(kw in role_lower for kw in keywords):
+            return agent.id
+    return None
+
 
 async def create_tasks_from_project(
     db: AsyncSession,
@@ -24,6 +49,7 @@ async def create_tasks_from_project(
     priority: str = "Medium",
     owner_agent_id: Optional[uuid.UUID] = None,
     agents: "Optional[List[Agent]]" = None,
+    phase_tasks: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Task]:
     existing_result = await db.execute(
         select(Task.title).where(
@@ -36,35 +62,66 @@ async def create_tasks_from_project(
     to_create: List[Task] = []
     available_agents: "List[Agent]" = agents or []
 
-    for ms in milestones:
-        title = ms.strip()[:255]
-        if title and title not in seen:
-            assigned = assign_task(title, None, available_agents) or owner_agent_id
-            to_create.append(Task(
-                id=uuid.uuid4(),
-                organization_id=organization_id,
-                project_id=project_id,
-                title=title,
-                priority=priority,
-                status="Todo",
-                assigned_to=assigned,
-            ))
-            seen.add(title)
+    if phase_tasks:
+        # Structured phase-based creation: assign via phase→role mapping
+        for pt in phase_tasks:
+            title = (pt.get("title") or "").strip()[:255]
+            if not title or title in seen:
+                continue
+            phase = pt.get("phase") or None
+            suggested_role = pt.get("suggested_role") or (PHASE_ROLE_MAP.get(phase, "") if phase else "")
+            description = pt.get("description") or None
 
-    for task_title in tasks:
-        title = task_title.strip()[:255]
-        if title and title not in seen:
-            assigned = assign_task(title, None, available_agents) or owner_agent_id
+            assigned: Optional[uuid.UUID] = None
+            if suggested_role and available_agents:
+                assigned = _find_agent_by_role(suggested_role, available_agents)
+            if assigned is None:
+                assigned = assign_task(title, description, available_agents)
+            assigned = assigned or owner_agent_id
+
             to_create.append(Task(
                 id=uuid.uuid4(),
                 organization_id=organization_id,
                 project_id=project_id,
                 title=title,
+                description=description,
                 priority=priority,
                 status="Todo",
+                phase=phase,
                 assigned_to=assigned,
             ))
             seen.add(title)
+    else:
+        # Backward-compatible flat milestones + tasks creation
+        for ms in milestones:
+            title = ms.strip()[:255]
+            if title and title not in seen:
+                assigned = assign_task(title, None, available_agents) or owner_agent_id
+                to_create.append(Task(
+                    id=uuid.uuid4(),
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    title=title,
+                    priority=priority,
+                    status="Todo",
+                    assigned_to=assigned,
+                ))
+                seen.add(title)
+
+        for task_title in tasks:
+            title = task_title.strip()[:255]
+            if title and title not in seen:
+                assigned = assign_task(title, None, available_agents) or owner_agent_id
+                to_create.append(Task(
+                    id=uuid.uuid4(),
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    title=title,
+                    priority=priority,
+                    status="Todo",
+                    assigned_to=assigned,
+                ))
+                seen.add(title)
 
     for t in to_create:
         db.add(t)
@@ -106,6 +163,7 @@ async def create_task(
         description=body.description,
         priority=body.priority,
         status=body.status,
+        phase=body.phase,
         assigned_to=body.assigned_to,
         due_date=body.due_date,
     )

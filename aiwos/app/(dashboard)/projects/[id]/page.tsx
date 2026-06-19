@@ -14,6 +14,11 @@ import {
   Activity,
   Zap,
   Eye,
+  FlaskConical,
+  Pen,
+  Code2,
+  TestTube2,
+  Rocket,
 } from "lucide-react";
 import { projectApi } from "@/lib/api/projects";
 import { taskApi, type TaskApiResponse } from "@/lib/api/tasks";
@@ -61,6 +66,18 @@ interface AgentStat {
   inProgress: number;
   notStarted: number;
 }
+
+type ProjectPhase = "Research" | "Design" | "Development" | "Testing" | "Deployment";
+
+const PHASE_ORDER: ProjectPhase[] = ["Research", "Design", "Development", "Testing", "Deployment"];
+
+const PHASE_META: Record<ProjectPhase, { icon: React.ReactNode; bg: string; text: string; role: string }> = {
+  Research:    { icon: <FlaskConical size={12} />, bg: "rgba(99,102,241,0.10)",  text: "#6366f1",          role: "Research Analyst" },
+  Design:      { icon: <Pen size={12} />,          bg: "rgba(236,72,153,0.10)",  text: "#ec4899",          role: "UI/UX Designer" },
+  Development: { icon: <Code2 size={12} />,        bg: "rgba(6,182,212,0.10)",   text: "var(--cyan)",      role: "Full Stack Engineer" },
+  Testing:     { icon: <TestTube2 size={12} />,    bg: "rgba(245,158,11,0.10)",  text: "var(--amber)",     role: "QA Engineer" },
+  Deployment:  { icon: <Rocket size={12} />,       bg: "rgba(16,185,129,0.10)",  text: "var(--green)",     role: "DevOps Engineer" },
+};
 
 // ---------------------------------------------------------------------------
 // TaskRow
@@ -323,6 +340,24 @@ export default function ProjectDetailPage() {
     staleTime: 30_000,
   });
 
+  // Group tasks by phase — tasks without a phase go into an unphased bucket
+  const tasksByPhase = useMemo(() => {
+    const grouped: Partial<Record<ProjectPhase, TaskApiResponse[]>> = {};
+    const unphased: TaskApiResponse[] = [];
+    for (const task of tasks) {
+      if (task.phase && (PHASE_ORDER as string[]).includes(task.phase)) {
+        const ph = task.phase as ProjectPhase;
+        if (!grouped[ph]) grouped[ph] = [];
+        grouped[ph]!.push(task);
+      } else {
+        unphased.push(task);
+      }
+    }
+    return { grouped, unphased };
+  }, [tasks]);
+
+  const hasPhases = Object.keys(tasksByPhase.grouped).length > 0;
+
   // Aggregate per-agent stats from task data — no extra API calls
   const agentStats = useMemo<AgentStat[]>(() => {
     const map = new Map<string, AgentStat>();
@@ -503,7 +538,74 @@ export default function ProjectDetailPage() {
           <div className="py-10 text-center text-sm text-muted-foreground">
             No tasks yet. Create a project from a chat recommendation to generate tasks automatically.
           </div>
+        ) : hasPhases ? (
+          // Phase-grouped view
+          <div>
+            {PHASE_ORDER.filter((ph) => tasksByPhase.grouped[ph]).map((phase) => {
+              const meta = PHASE_META[phase];
+              const phaseTasks = tasksByPhase.grouped[phase]!;
+              const phDone = phaseTasks.filter((t) => t.status === "Done").length;
+              return (
+                <div key={phase}>
+                  {/* Phase header */}
+                  <div
+                    className="flex items-center gap-2 px-4 py-2"
+                    style={{ borderBottom: "1px solid var(--border-light)", background: "var(--elevated)" }}
+                  >
+                    <span
+                      className="flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-semibold"
+                      style={{ background: meta.bg, color: meta.text }}
+                    >
+                      {meta.icon}
+                      {phase} Phase
+                    </span>
+                    <span className="text-[10px]" style={{ color: "var(--faint)" }}>
+                      {meta.role}
+                    </span>
+                    <span className="ml-auto text-[10px]" style={{ color: "var(--muted-foreground)" }}>
+                      {phDone}/{phaseTasks.length}
+                    </span>
+                  </div>
+                  {/* Phase tasks */}
+                  {phaseTasks.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      executions={executionsByTask.data?.[task.id] ?? []}
+                      onExecute={handleExecute}
+                      onView={(execId, taskTitle) => setViewingExecution({ id: execId, taskTitle })}
+                      isExecuting={executingTaskId === task.id}
+                    />
+                  ))}
+                </div>
+              );
+            })}
+            {/* Unphased tasks (backward compat) */}
+            {tasksByPhase.unphased.length > 0 && (
+              <div>
+                <div
+                  className="flex items-center gap-2 px-4 py-2"
+                  style={{ borderBottom: "1px solid var(--border-light)", background: "var(--elevated)" }}
+                >
+                  <span className="text-[11px] font-semibold" style={{ color: "var(--muted-foreground)" }}>
+                    General
+                  </span>
+                </div>
+                {tasksByPhase.unphased.map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    executions={executionsByTask.data?.[task.id] ?? []}
+                    onExecute={handleExecute}
+                    onView={(execId, taskTitle) => setViewingExecution({ id: execId, taskTitle })}
+                    isExecuting={executingTaskId === task.id}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         ) : (
+          // Flat view (legacy tasks without phase)
           <div>
             {tasks.map((task) => (
               <TaskRow

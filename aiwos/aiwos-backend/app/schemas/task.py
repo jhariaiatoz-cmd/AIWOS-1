@@ -35,6 +35,7 @@ class TaskCreate(BaseModel):
     description: str | None = None
     priority: TaskPriority = "Medium"
     status: TaskStatus = "Todo"
+    phase: str | None = None
     assigned_to: uuid.UUID | None = None
     due_date: datetime | None = None
 
@@ -71,6 +72,7 @@ class TaskResponse(BaseModel):
     description: str | None
     priority: str
     status: str
+    phase: str | None = None
     due_date: datetime | None
     completed_at: datetime | None
     created_at: datetime
@@ -79,11 +81,20 @@ class TaskResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PhasedTask(BaseModel):
+    """A task with an explicit project phase and suggested specialist role."""
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    phase: str | None = None          # Research | Design | Development | Testing | Deployment
+    suggested_role: str | None = None  # e.g. "Research Analyst", "QA Engineer"
+
+
 class TaskBulkFromProject(BaseModel):
     project_id: uuid.UUID
     organization_id: uuid.UUID
     milestones: list[str] = []
     tasks: list[str] = []
+    phase_tasks: list[PhasedTask] = []  # structured phase-based tasks; takes priority when present
     priority: TaskPriority = "Medium"
     owner_agent_id: Optional[uuid.UUID] = None
 

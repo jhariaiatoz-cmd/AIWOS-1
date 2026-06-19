@@ -237,7 +237,7 @@ def _build_system_prompt(agent: Agent) -> str:
         "",
         "1. **## Executive Summary** — 2-3 sentences: the situation and your single most important recommendation.",
         "2. **## Analysis** — Detailed, role-specific analysis. Cite evidence, frameworks, assumptions, and trade-offs.",
-        "3. **## Recommended Plan** — Concrete, prioritized action steps. Number them. Be specific.",
+        "3. **## Recommended Plan** — Structure as named phases using `### Phase Name` headings (e.g., `### Research Phase`, `### Design Phase`, `### Development Phase`, `### Testing Phase`, `### Deployment Phase`). Under each phase heading, list 2–5 bullet tasks using `- task description`. Always use this phase-based format for any planning or project-generation response. Do not use numbered lists or flat task lists here.",
         "4. **## Risks** — Key risks, blockers, trade-offs, or open questions that must be addressed.",
         "5. **## Next Actions** — 3-5 immediate, assignable actions with a clear owner and timeline.",
         "",

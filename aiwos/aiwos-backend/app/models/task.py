@@ -56,6 +56,10 @@ class Task(Base, TimestampMixin, SoftDeleteMixin):
         default="Todo",
         nullable=False
     )
+    phase: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True
+    )
     due_date: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True
