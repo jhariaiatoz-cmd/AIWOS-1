@@ -1,6 +1,7 @@
 import logging
 import uuid
 from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import List, Optional
 
 from sqlalchemy import select
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.agent import Agent
 from app.models.agent_metric import AgentMetric
 from app.models.execution_log import ExecutionLog
+from app.models.knowledge_file import KnowledgeFile
 from app.models.project import Project
 from app.models.task import Task
 from app.models.task_execution import TaskExecution
@@ -18,6 +20,65 @@ from app.services.llm_provider_service import complete as llm_complete
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "gemini-2.5-flash"
+_KNOWLEDGE_CHAR_LIMIT = 15_000  # ~3,750 tokens at 4 chars/token
+
+
+def _extract_file_text(file_path: str, file_type: str) -> str:
+    """Return plain text from a knowledge file on disk. Returns '' on any failure."""
+    path = Path(file_path)
+    if not path.exists():
+        return ""
+    try:
+        if file_type in ("txt", "md", "csv"):
+            return path.read_text(errors="replace")
+        if file_type == "pdf":
+            import pypdf  # already in requirements.txt
+            reader = pypdf.PdfReader(str(path))
+            return "\n".join(page.extract_text() or "" for page in reader.pages)
+        if file_type == "docx":
+            import docx  # python-docx, already in requirements.txt
+            doc = docx.Document(str(path))
+            return "\n".join(p.text for p in doc.paragraphs)
+    except Exception:
+        pass
+    return ""
+
+
+async def _load_knowledge_context(
+    db: AsyncSession, organization_id: uuid.UUID
+) -> str:
+    """
+    Fetch all non-deleted knowledge files for the org, extract their text, and
+    return a single string capped at _KNOWLEDGE_CHAR_LIMIT characters.
+    Files are processed oldest-first so foundational documents appear first.
+    """
+    result = await db.execute(
+        select(KnowledgeFile)
+        .where(
+            KnowledgeFile.organization_id == organization_id,
+            KnowledgeFile.deleted_at.is_(None),
+        )
+        .order_by(KnowledgeFile.created_at.asc())
+    )
+    files = list(result.scalars().all())
+    if not files:
+        return ""
+
+    sections: list[str] = []
+    total_chars = 0
+    for kf in files:
+        if total_chars >= _KNOWLEDGE_CHAR_LIMIT:
+            break
+        text = _extract_file_text(kf.file_path, kf.file_type).strip()
+        if not text:
+            continue
+        budget = _KNOWLEDGE_CHAR_LIMIT - total_chars
+        snippet = text[:budget]
+        sections.append(f"### {kf.name}\n\n{snippet}")
+        total_chars += len(snippet)
+
+    return "\n\n---\n\n".join(sections)
+
 
 # Phase → deliverable-specific prompt guidance injected into every user prompt.
 _PHASE_DELIVERABLE_GUIDANCE: dict[str, str] = {
@@ -113,7 +174,8 @@ async def run_execution(db: AsyncSession, execution_id: uuid.UUID) -> TaskExecut
     await db.commit()
 
     system_prompt = _build_system_prompt(agent)
-    user_prompt = _build_user_prompt(task, project)
+    knowledge_context = await _load_knowledge_context(db, task.organization_id)
+    user_prompt = _build_user_prompt(task, project, knowledge_context=knowledge_context)
     execution.input_data = {"system_prompt": system_prompt, "user_prompt": user_prompt}
 
     persona_conduct = _detect_persona_conduct(agent)
@@ -308,7 +370,9 @@ async def _resolve_agent(
     return agent
 
 
-def _build_user_prompt(task: Task, project: Project) -> str:
+def _build_user_prompt(
+    task: Task, project: Project, *, knowledge_context: str = ""
+) -> str:
     lines: list[str] = [
         "You are executing a task and must produce a professional deliverable as your output.",
         "",
@@ -331,6 +395,22 @@ def _build_user_prompt(task: Task, project: Project) -> str:
             "",
             f"**Deliverable Requirement ({task.phase} phase):** {phase_guidance}",
         ]
+
+    # ── Knowledge Base ────────────────────────────────────────────────────────
+    # Knowledge files uploaded for this organization are injected here so every
+    # specialist can reference project requirements, specs, and other context
+    # without any manual copy-paste.
+    if knowledge_context:
+        lines += [
+            "",
+            "## Knowledge Base",
+            "",
+            "The following documents have been uploaded for this project. "
+            "Treat them as your primary reference when producing your deliverable.",
+            "",
+            knowledge_context,
+        ]
+    # ─────────────────────────────────────────────────────────────────────────
 
     phase_sections = _PHASE_OUTPUT_SECTIONS.get(task.phase or "")
     if phase_sections:
