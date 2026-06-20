@@ -1,5 +1,12 @@
 import { apiClient } from "./client";
 
+export type ExecutionErrorType =
+  | "quota_exceeded"
+  | "rate_limited"
+  | "service_unavailable"
+  | "auth_error"
+  | "unknown";
+
 export type ExecutionApiResponse = {
   id: string;
   task_id: string;
@@ -8,7 +15,12 @@ export type ExecutionApiResponse = {
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   started_at: string | null;
   completed_at: string | null;
-  output_data: { content?: string } | null;
+  output_data: {
+    content?: string;
+    provider_used?: string | null;
+    fallback_provider?: string | null;
+    error_type?: ExecutionErrorType | null;
+  } | null;
   error_message: string | null;
   token_count: number;
   cost: number;
@@ -16,6 +28,10 @@ export type ExecutionApiResponse = {
   retry_count: number;
   created_at: string;
   updated_at: string;
+  // Provider tracking fields surfaced as top-level by the backend schema
+  provider_used?: string | null;
+  fallback_provider?: string | null;
+  error_type?: ExecutionErrorType | null;
 };
 
 export type ExecuteTaskApiResponse = {

@@ -9,6 +9,11 @@ export type DashboardStats = {
   total_executions: number;
   workflow_count: number;
   total_cost_today: number;
+  // Execution health breakdown
+  executions_successful: number;
+  executions_failed: number;
+  executions_retried: number;
+  executions_with_fallback: number;
 };
 
 export type DepartmentStat = {

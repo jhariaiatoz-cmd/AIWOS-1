@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from datetime import date, datetime, timezone
@@ -15,7 +16,15 @@ from app.models.project import Project
 from app.models.task import Task
 from app.models.task_execution import TaskExecution
 from app.services.conversation_service import _build_system_prompt, _detect_persona_conduct
-from app.services.llm_provider_service import complete as llm_complete
+from app.services.llm_provider_service import (
+    LLMResponse,
+    ProviderErrorType,
+    classify_provider_error,
+    complete as llm_complete,
+    get_fallback_models,
+    get_provider_for_model,
+    is_retryable_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +33,19 @@ _KNOWLEDGE_CHAR_LIMIT = 15_000  # ~3,750 tokens at 4 chars/token
 _HANDOFF_CHAR_LIMIT = 3_000
 
 _PHASE_ORDER = ["Research", "Design", "Development", "Testing", "Deployment"]
+
+# Exponential-backoff delays (seconds) before attempt 2, 3, and 4.
+# Attempt 1 is always immediate.
+_RETRY_DELAYS = [2, 5, 10]
+
+
+class RetryExhaustedError(Exception):
+    """Raised when all LLM retry attempts are exhausted for a transient error."""
+
+    def __init__(self, original: Exception, retry_count: int) -> None:
+        super().__init__(str(original))
+        self.original = original
+        self.retry_count = retry_count
 
 
 def _extract_file_text(file_path: str, file_type: str) -> str:
@@ -194,6 +216,148 @@ _PHASE_OUTPUT_SECTIONS: dict[str, list[str]] = {
 }
 
 # ---------------------------------------------------------------------------
+# Retry + fallback helpers
+# ---------------------------------------------------------------------------
+
+_FRIENDLY_ERROR_MESSAGES: dict[str, str] = {
+    ProviderErrorType.QUOTA_EXCEEDED.value: (
+        "The AI provider has exhausted its request quota."
+    ),
+    ProviderErrorType.RATE_LIMITED.value: (
+        "The AI provider has reached its rate limit."
+    ),
+    ProviderErrorType.SERVICE_UNAVAILABLE.value: (
+        "The AI provider is temporarily unavailable."
+    ),
+}
+
+
+async def _call_llm_with_retry(
+    db: AsyncSession,
+    execution: TaskExecution,
+    agent: Agent,
+    task: Task,
+    *,
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+) -> tuple[LLMResponse, int]:
+    """
+    Call llm_complete with up to 4 attempts using exponential backoff.
+
+    Returns (response, retry_count) where retry_count=0 means the first
+    attempt succeeded.  Raises RetryExhaustedError when all attempts fail
+    with a transient error.  Non-retryable errors are re-raised immediately.
+    """
+    last_exc: Exception = RuntimeError("unreachable")
+    for attempt in range(4):
+        if attempt > 0:
+            await asyncio.sleep(_RETRY_DELAYS[attempt - 1])
+        try:
+            response = await llm_complete(
+                model=model,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            )
+            return response, attempt  # 0 = first attempt, 1 = first retry, …
+        except Exception as exc:
+            if not is_retryable_error(exc):
+                raise
+            last_exc = exc
+            if attempt < 3:  # more attempts remain — record the transient failure
+                await _insert_execution_log(
+                    db,
+                    execution=execution,
+                    agent=agent,
+                    task=task,
+                    status="retrying",
+                    error_message="Provider temporarily unavailable. Retrying...",
+                )
+    raise RetryExhaustedError(last_exc, retry_count=3)
+
+
+async def _call_with_provider_fallback(
+    db: AsyncSession,
+    execution: TaskExecution,
+    agent: Agent,
+    task: Task,
+    *,
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+) -> tuple[LLMResponse, int, str, Optional[str]]:
+    """
+    Try the primary model with retries, then automatically fall back to alternative
+    providers when a quota / rate-limit / unavailability error is exhausted.
+
+    Returns (llm_response, retry_count, provider_used, fallback_from_provider).
+    fallback_from_provider is None when the primary provider succeeded.
+    """
+    primary_provider = get_provider_for_model(model)
+
+    try:
+        response, retry_count = await _call_llm_with_retry(
+            db, execution, agent, task,
+            model=model,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+        )
+        return response, retry_count, primary_provider, None
+
+    except RetryExhaustedError as exc:
+        error_type = classify_provider_error(exc.original)
+        is_quota_or_availability = error_type in (
+            ProviderErrorType.QUOTA_EXCEEDED,
+            ProviderErrorType.RATE_LIMITED,
+            ProviderErrorType.SERVICE_UNAVAILABLE,
+        )
+        if not is_quota_or_availability:
+            raise
+
+        logger.warning(
+            "Execution %s: provider=%s exhausted with %s (retries=%d). Attempting fallback.",
+            execution.id, primary_provider, error_type.value, exc.retry_count,
+        )
+
+        fallbacks = get_fallback_models(model)
+        last_exc = exc
+        for fallback_provider, fallback_model in fallbacks:
+            logger.info(
+                "Execution %s: trying fallback provider=%s model=%s",
+                execution.id, fallback_provider, fallback_model,
+            )
+            await _insert_execution_log(
+                db, execution=execution, agent=agent, task=task,
+                status="retrying",
+                error_message=(
+                    f"Primary provider ({primary_provider}) {error_type.value}. "
+                    f"Switching to {fallback_provider}..."
+                ),
+            )
+            try:
+                response, retry_count = await _call_llm_with_retry(
+                    db, execution, agent, task,
+                    model=fallback_model,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                )
+                logger.info(
+                    "Execution %s: fallback to provider=%s succeeded (retries=%d)",
+                    execution.id, fallback_provider, retry_count,
+                )
+                return response, retry_count, fallback_provider, primary_provider
+            except RetryExhaustedError as fb_exc:
+                logger.warning(
+                    "Execution %s: fallback provider=%s also failed: %s",
+                    execution.id, fallback_provider, fb_exc.original,
+                )
+                last_exc = fb_exc
+
+        # All providers exhausted — propagate with the most recent failure
+        raise RetryExhaustedError(last_exc.original, last_exc.retry_count)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -262,20 +426,54 @@ async def run_execution(db: AsyncSession, execution_id: uuid.UUID) -> TaskExecut
     model = agent.model or _DEFAULT_MODEL
     started_at = execution.started_at
 
+    # ── LLM call with retry + provider fallback ───────────────────────────────
+    error_msg: Optional[str] = None
+    error_retry_count: int = 0
+    error_type_str: Optional[str] = None
+    llm_response: Optional[LLMResponse] = None
+    retry_count: int = 0
+    provider_used: Optional[str] = None
+    fallback_from_provider: Optional[str] = None
+
     try:
-        llm_response = await llm_complete(
-            model=model,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
+        llm_response, retry_count, provider_used, fallback_from_provider = (
+            await _call_with_provider_fallback(
+                db, execution, agent, task,
+                model=model,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            )
+        )
+    except RetryExhaustedError as exc:
+        err_type = classify_provider_error(exc.original)
+        error_type_str = err_type.value
+        error_retry_count = exc.retry_count
+        error_msg = _FRIENDLY_ERROR_MESSAGES.get(
+            error_type_str, "Provider unavailable after multiple attempts."
+        )
+        provider_used = provider_used or get_provider_for_model(model)
+        logger.error(
+            "Execution %s: all providers exhausted. primary=%s error_type=%s retries=%d",
+            execution.id, provider_used, error_type_str, error_retry_count,
         )
     except Exception as exc:
+        error_msg = str(exc)
+        error_type_str = "unknown"
+        provider_used = provider_used or get_provider_for_model(model)
+
+    if error_msg is not None:
         completed_at = datetime.now(timezone.utc)
         elapsed_ms = int((completed_at - started_at).total_seconds() * 1000)
 
         execution.status = "failed"
-        execution.error_message = str(exc)
+        execution.error_message = error_msg
+        execution.retry_count = error_retry_count
         execution.completed_at = completed_at
         execution.execution_time_ms = elapsed_ms
+        execution.output_data = {
+            "provider_used": provider_used,
+            "error_type": error_type_str or "unknown",
+        }
 
         await db.commit()
 
@@ -285,7 +483,7 @@ async def run_execution(db: AsyncSession, execution_id: uuid.UUID) -> TaskExecut
             agent=agent,
             task=task,
             status="failed",
-            error_message=str(exc),
+            error_message=error_msg,
             elapsed_ms=elapsed_ms,
         )
         await _upsert_agent_metric(
@@ -295,17 +493,24 @@ async def run_execution(db: AsyncSession, execution_id: uuid.UUID) -> TaskExecut
             tasks_failed=1,
         )
         return execution
+    # ─────────────────────────────────────────────────────────────────────────
 
     # Success path
+    assert llm_response is not None
     completed_at = datetime.now(timezone.utc)
     elapsed_ms = int((completed_at - started_at).total_seconds() * 1000)
 
     execution.status = "completed"
-    execution.output_data = {"content": llm_response.content}
+    execution.output_data = {
+        "content": llm_response.content,
+        "provider_used": provider_used,
+        "fallback_provider": fallback_from_provider,
+    }
     execution.token_count = llm_response.input_tokens + llm_response.output_tokens
     execution.cost = llm_response.cost
     execution.completed_at = completed_at
     execution.execution_time_ms = elapsed_ms
+    execution.retry_count = retry_count
 
     task.status = "Done"
 

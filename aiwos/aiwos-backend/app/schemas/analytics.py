@@ -12,6 +12,11 @@ class DashboardStats(BaseModel):
     total_executions: int
     workflow_count: int
     total_cost_today: float
+    # Execution health breakdown
+    executions_successful: int = 0
+    executions_failed: int = 0
+    executions_retried: int = 0
+    executions_with_fallback: int = 0
 
 
 class DepartmentStat(BaseModel):

@@ -1,11 +1,11 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, CheckCircle2, XCircle, RefreshCw, ArrowLeftRight } from "lucide-react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 
 import { useAuthStore } from "@/lib/store/auth";
-import { analyticsApi } from "@/lib/api/analytics";
+import { analyticsApi, type DashboardStats } from "@/lib/api/analytics";
 import type { StatCard } from "@/lib/types";
 
 import { StatCard as StatCardComponent, StatCardSkeleton } from "./StatCard";
@@ -13,6 +13,73 @@ import { DepartmentGrid } from "./DepartmentGrid";
 import { TaskCompletionChart } from "./TaskCompletionChart";
 import { TopAgents } from "./TopAgents";
 import { RecentActivities } from "./RecentActivities";
+
+type ExecutionHealthCardDef = {
+  label: string;
+  value: number;
+  color: string;
+  bgColor: string;
+  Icon: React.ComponentType<{ size?: number; className?: string }>;
+};
+
+function buildExecutionHealthCards(stats: DashboardStats): ExecutionHealthCardDef[] {
+  return [
+    {
+      label: "Successful",
+      value: stats.executions_successful ?? 0,
+      color: "var(--green)",
+      bgColor: "rgba(16,185,129,0.12)",
+      Icon: CheckCircle2,
+    },
+    {
+      label: "Failed",
+      value: stats.executions_failed ?? 0,
+      color: "var(--red)",
+      bgColor: "rgba(239,68,68,0.12)",
+      Icon: XCircle,
+    },
+    {
+      label: "Retried",
+      value: stats.executions_retried ?? 0,
+      color: "var(--cyan)",
+      bgColor: "rgba(6,182,212,0.12)",
+      Icon: RefreshCw,
+    },
+    {
+      label: "Fallback Used",
+      value: stats.executions_with_fallback ?? 0,
+      color: "var(--amber)",
+      bgColor: "rgba(245,158,11,0.12)",
+      Icon: ArrowLeftRight,
+    },
+  ];
+}
+
+function ExecutionHealthCard({ card }: { card: ExecutionHealthCardDef }) {
+  const { Icon } = card;
+  return (
+    <div
+      className="rounded-xl border p-4"
+      style={{ background: "var(--card)", borderColor: "var(--border-light)" }}
+    >
+      <div className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Icon size={14} style={{ color: card.color }} />
+        {card.label}
+      </div>
+      <div className="flex items-start justify-between">
+        <div className="text-[26px] font-bold leading-tight text-foreground">
+          {card.value.toLocaleString()}
+        </div>
+        <div
+          className="flex h-9 w-9 items-center justify-center rounded-lg"
+          style={{ background: card.bgColor, color: card.color }}
+        >
+          <Icon size={18} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function buildStatCards(stats: {
   total_agents: number;
@@ -121,6 +188,7 @@ export function DashboardContent() {
   }
 
   const statCards = data ? buildStatCards(data.stats) : [];
+  const healthCards = data ? buildExecutionHealthCards(data.stats) : [];
 
   return (
     <>
@@ -131,6 +199,20 @@ export function DashboardContent() {
           : statCards.map((card) => (
               <StatCardComponent key={card.label} card={card} />
             ))}
+      </div>
+
+      {/* Execution Health */}
+      <div className="mb-6">
+        <div className="mb-3.5 flex items-center justify-between gap-3">
+          <span className="text-sm font-semibold text-foreground">Execution Health</span>
+        </div>
+        <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
+          {isLoading
+            ? Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
+            : healthCards.map((card) => (
+                <ExecutionHealthCard key={card.label} card={card} />
+              ))}
+        </div>
       </div>
 
       {/* Department Overview */}

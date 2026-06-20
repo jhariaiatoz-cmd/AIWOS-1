@@ -2,6 +2,19 @@ import type { Agent } from "@/lib/types";
 
 export const agentsData: Agent[] = [
   {
+    id: "copilot",
+    name: "AIWOS Copilot",
+    initials: "AC",
+    role: "Universal AI Assistant",
+    department: "Intelligence",
+    status: "Active",
+    tasks: 0,
+    performance: 100,
+    avatarColor: "linear-gradient(135deg, #10a37f, #7c3aed)",
+    provider: "openai",
+    model: "gpt-4o",
+  },
+  {
     id: "1",
     name: "Research Agent",
     initials: "RA",
@@ -11,6 +24,8 @@ export const agentsData: Agent[] = [
     tasks: 12,
     performance: 97,
     avatarColor: "linear-gradient(135deg, #7c3aed, #06b6d4)",
+    provider: null,
+    model: null,
   },
   {
     id: "2",
@@ -22,6 +37,8 @@ export const agentsData: Agent[] = [
     tasks: 8,
     performance: 94,
     avatarColor: "linear-gradient(135deg, #06b6d4, #10b981)",
+    provider: null,
+    model: null,
   },
   {
     id: "3",
@@ -33,6 +50,8 @@ export const agentsData: Agent[] = [
     tasks: 15,
     performance: 92,
     avatarColor: "linear-gradient(135deg, #10b981, #f59e0b)",
+    provider: null,
+    model: null,
   },
   {
     id: "4",
@@ -44,6 +63,8 @@ export const agentsData: Agent[] = [
     tasks: 5,
     performance: 90,
     avatarColor: "linear-gradient(135deg, #f59e0b, #ef4444)",
+    provider: null,
+    model: null,
   },
   {
     id: "5",
@@ -55,6 +76,8 @@ export const agentsData: Agent[] = [
     tasks: 6,
     performance: 89,
     avatarColor: "linear-gradient(135deg, #ef4444, #ec4899)",
+    provider: null,
+    model: null,
   },
   {
     id: "6",
@@ -66,6 +89,8 @@ export const agentsData: Agent[] = [
     tasks: 11,
     performance: 88,
     avatarColor: "linear-gradient(135deg, #ec4899, #7c3aed)",
+    provider: null,
+    model: null,
   },
   {
     id: "7",
@@ -77,6 +102,8 @@ export const agentsData: Agent[] = [
     tasks: 3,
     performance: 85,
     avatarColor: "linear-gradient(135deg, #7c3aed, #06b6d4)",
+    provider: null,
+    model: null,
   },
   {
     id: "8",
@@ -88,6 +115,8 @@ export const agentsData: Agent[] = [
     tasks: 9,
     performance: 87,
     avatarColor: "linear-gradient(135deg, #06b6d4, #10b981)",
+    provider: null,
+    model: null,
   },
   {
     id: "9",
@@ -99,6 +128,8 @@ export const agentsData: Agent[] = [
     tasks: 7,
     performance: 84,
     avatarColor: "linear-gradient(135deg, #10b981, #f59e0b)",
+    provider: null,
+    model: null,
   },
   {
     id: "10",
@@ -110,6 +141,8 @@ export const agentsData: Agent[] = [
     tasks: 4,
     performance: 95,
     avatarColor: "linear-gradient(135deg, #f59e0b, #ef4444)",
+    provider: null,
+    model: null,
   },
   {
     id: "11",
@@ -121,6 +154,8 @@ export const agentsData: Agent[] = [
     tasks: 2,
     performance: 82,
     avatarColor: "linear-gradient(135deg, #ef4444, #ec4899)",
+    provider: null,
+    model: null,
   },
   {
     id: "12",
@@ -132,6 +167,8 @@ export const agentsData: Agent[] = [
     tasks: 14,
     performance: 91,
     avatarColor: "linear-gradient(135deg, #ec4899, #7c3aed)",
+    provider: null,
+    model: null,
   },
   {
     id: "13",
@@ -143,6 +180,8 @@ export const agentsData: Agent[] = [
     tasks: 10,
     performance: 86,
     avatarColor: "linear-gradient(135deg, #7c3aed, #06b6d4)",
+    provider: null,
+    model: null,
   },
   {
     id: "14",
@@ -154,6 +193,8 @@ export const agentsData: Agent[] = [
     tasks: 5,
     performance: 83,
     avatarColor: "linear-gradient(135deg, #06b6d4, #10b981)",
+    provider: null,
+    model: null,
   },
   {
     id: "15",
@@ -165,10 +206,13 @@ export const agentsData: Agent[] = [
     tasks: 1,
     performance: 81,
     avatarColor: "linear-gradient(135deg, #10b981, #f59e0b)",
+    provider: null,
+    model: null,
   },
 ];
 
 export const departments = [
+  "Intelligence",
   "Development",
   "Sales & Marketing",
   "HR",

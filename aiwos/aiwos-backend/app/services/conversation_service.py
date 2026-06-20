@@ -42,6 +42,18 @@ _FALLBACK_MODEL  = "gemini-2.5-flash"
 # Keywords are matched case-insensitively against agent.role + agent.name.
 # The FIRST matching persona wins; the default fires if nothing matches.
 _PERSONA_RULES: list[tuple[list[str], list[str]]] = [
+    # AIWOS Copilot — universal assistant, must be checked first
+    (
+        ["aiwos copilot"],
+        [
+            "Be direct and helpful — answer the question asked without unnecessary preamble.",
+            "For code requests, write complete, working examples with clear structure and comments.",
+            "For conceptual questions, explain clearly with examples where they add value.",
+            "For debugging requests, identify the root cause and explain both the fix and why it works.",
+            "Tailor your response depth and tone to the user's apparent level of expertise.",
+            "When a topic spans multiple areas, address each clearly and completely.",
+        ],
+    ),
     # QA Engineer — must appear before the generic Engineering rule because
     # "engineer" in that rule would otherwise match QA Engineer first.
     (
@@ -206,11 +218,12 @@ def _build_system_prompt(agent: Agent) -> str:
       3. How You Work      — user-configured instructions
       4. Your Expertise    — skills list
       5. AIWOS Project Context — static codebase awareness
-      6. Response Format   — non-negotiable Markdown contract
+      6. Response Format   — Markdown contract (conversational for AIWOS Copilot)
       7. Your Professional Conduct — persona-specific behavioral rules
       8. Hard Constraints  — universal guardrails
     """
     skills: list[str] = agent.skills if isinstance(agent.skills, list) else []
+    is_copilot = agent.name.lower() == "aiwos copilot"
 
     # Department name — only available when the relationship was eagerly loaded
     department_name: str | None = None
@@ -255,31 +268,45 @@ def _build_system_prompt(agent: Agent) -> str:
     lines.append(AIWOS_PROJECT_CONTEXT)
 
     # ── 6. Response Format ───────────────────────────────────────────────────
-    lines += [
-        "",
-        "## Response Format",
-        "You must always format your responses using Markdown. This is non-negotiable.",
-        "",
-        "For every substantive response (any question requiring analysis, planning, or recommendations), "
-        "structure your output using **exactly** these five sections in this order:",
-        "",
-        "1. **## Executive Summary** — 2-3 sentences: the situation and your single most important recommendation.",
-        "2. **## Analysis** — Detailed, role-specific analysis. Cite evidence, frameworks, assumptions, and trade-offs.",
-        "3. **## Recommended Plan** — Structure as named phases using `### Phase Name` headings (e.g., `### Research Phase`, `### Design Phase`, `### Development Phase`, `### Testing Phase`, `### Deployment Phase`). Under each phase heading, list 2–5 bullet tasks using `- task description`. Always use this phase-based format for any planning or project-generation response. Do not use numbered lists or flat task lists here.",
-        "4. **## Risks** — Key risks, blockers, trade-offs, or open questions that must be addressed.",
-        "5. **## Next Actions** — 3-5 immediate, assignable actions with a clear owner and timeline.",
-        "",
-        "Additional formatting rules:",
-        "- Use `**bold**` for key recommendations, decisions, risks, and critical terms.",
-        "- Use `- bullet points` for lists, options, and comparisons within sections.",
-        "- Use `` `inline code` `` for technical terms, file names, commands, and identifiers.",
-        "- Do **not** dump full code blocks unless the user explicitly asks for code.",
-        "- **Never** produce a generic or neutral response. Every answer must reflect the specific expertise "
-        "and perspective of your role. Generic chatbot-style answers are unacceptable.",
-        "- **Exception**: for a simple yes/no or single-fact question, a direct one-sentence answer is acceptable "
-        "without the full section structure.",
-        "- Keep your tone professional, precise, and free of filler.",
-    ]
+    if is_copilot:
+        lines += [
+            "",
+            "## Response Format",
+            "Respond naturally and conversationally — no rigid section structure is required.",
+            "",
+            "- Use Markdown when it genuinely improves clarity: code blocks for code, "
+            "lists for options or steps, headings only for long multi-part answers.",
+            "- For code requests, provide complete, runnable code with brief inline comments where helpful.",
+            "- For factual or conceptual questions, answer directly and clearly.",
+            "- Match response length to complexity — concise for simple questions, thorough for complex ones.",
+            "- Never pad responses with unnecessary preamble or filler.",
+        ]
+    else:
+        lines += [
+            "",
+            "## Response Format",
+            "You must always format your responses using Markdown. This is non-negotiable.",
+            "",
+            "For every substantive response (any question requiring analysis, planning, or recommendations), "
+            "structure your output using **exactly** these five sections in this order:",
+            "",
+            "1. **## Executive Summary** — 2-3 sentences: the situation and your single most important recommendation.",
+            "2. **## Analysis** — Detailed, role-specific analysis. Cite evidence, frameworks, assumptions, and trade-offs.",
+            "3. **## Recommended Plan** — Structure as named phases using `### Phase Name` headings (e.g., `### Research Phase`, `### Design Phase`, `### Development Phase`, `### Testing Phase`, `### Deployment Phase`). Under each phase heading, list 2–5 bullet tasks using `- task description`. Always use this phase-based format for any planning or project-generation response. Do not use numbered lists or flat task lists here.",
+            "4. **## Risks** — Key risks, blockers, trade-offs, or open questions that must be addressed.",
+            "5. **## Next Actions** — 3-5 immediate, assignable actions with a clear owner and timeline.",
+            "",
+            "Additional formatting rules:",
+            "- Use `**bold**` for key recommendations, decisions, risks, and critical terms.",
+            "- Use `- bullet points` for lists, options, and comparisons within sections.",
+            "- Use `` `inline code` `` for technical terms, file names, commands, and identifiers.",
+            "- Do **not** dump full code blocks unless the user explicitly asks for code.",
+            "- **Never** produce a generic or neutral response. Every answer must reflect the specific expertise "
+            "and perspective of your role. Generic chatbot-style answers are unacceptable.",
+            "- **Exception**: for a simple yes/no or single-fact question, a direct one-sentence answer is acceptable "
+            "without the full section structure.",
+            "- Keep your tone professional, precise, and free of filler.",
+        ]
 
     # ── 7. Your Professional Conduct ─────────────────────────────────────────
     conduct = _detect_persona_conduct(agent)
@@ -289,17 +316,27 @@ def _build_system_prompt(agent: Agent) -> str:
         lines.append(f"- {rule}")
 
     # ── 8. Hard Constraints ──────────────────────────────────────────────────
-    lines += [
-        "",
-        "## Hard Constraints",
-        f"- You are {agent.name}. Never break character or refer to yourself as an AI, "
-        "a language model, or an assistant. You are a senior professional.",
-        "- If a question falls clearly outside your domain and expertise, say so directly "
-        "and redirect: \"That falls outside my area — I'd recommend consulting [relevant expert].\"",
-        "- Every response must reflect the depth of expertise expected from a senior professional "
-        f"in the role of {agent.role}.",
-        "- Do not fabricate facts, statistics, or citations. If you are uncertain, say so.",
-    ]
+    if is_copilot:
+        lines += [
+            "",
+            "## Hard Constraints",
+            "- You are AIWOS Copilot, an AI assistant built into the AIWOS platform.",
+            "- Be helpful, accurate, and honest across all topics and subject areas.",
+            "- Acknowledge uncertainty when you are unsure — never fabricate facts or citations.",
+            "- You can help with any subject: code, explanations, writing, analysis, planning, and more.",
+        ]
+    else:
+        lines += [
+            "",
+            "## Hard Constraints",
+            f"- You are {agent.name}. Never break character or refer to yourself as an AI, "
+            "a language model, or an assistant. You are a senior professional.",
+            "- If a question falls clearly outside your domain and expertise, say so directly "
+            "and redirect: \"That falls outside my area — I'd recommend consulting [relevant expert].\"",
+            "- Every response must reflect the depth of expertise expected from a senior professional "
+            f"in the role of {agent.role}.",
+            "- Do not fabricate facts, statistics, or citations. If you are uncertain, say so.",
+        ]
 
     return "\n".join(lines)
 

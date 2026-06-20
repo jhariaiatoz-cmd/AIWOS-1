@@ -1,10 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { Search, Bell, Settings, Plus } from "lucide-react";
+import { Search, Bell, Settings, Plus, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { useId } from "react";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { cn } from "@/lib/utils";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -23,8 +26,10 @@ export function Topbar() {
   const pathname = usePathname();
   const title = PAGE_TITLES[pathname] ?? "Dashboard";
   const searchId = useId();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   return (
+    <>
     <header
       className="z-10 flex h-14 min-h-14 items-center gap-3 px-4 sm:px-5"
       style={{
@@ -32,6 +37,16 @@ export function Topbar() {
         borderBottom: "1px solid var(--border-light)",
       }}
     >
+      {/* Hamburger button — mobile only */}
+      <button
+        type="button"
+        className="lg:hidden flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus:ring-2 focus:ring-primary/25 focus:outline-none"
+        onClick={() => setDrawerOpen(true)}
+        aria-label="Open navigation"
+      >
+        <Menu size={18} />
+      </button>
+
       {/* Page title */}
       <div className="flex-1">
         <span className="line-clamp-1 text-[15px] font-semibold text-foreground">
@@ -101,5 +116,38 @@ export function Topbar() {
         </button>
       </div>
     </header>
+
+    {/* Mobile drawer — only rendered on small screens */}
+    <div className="lg:hidden">
+      {/* Backdrop */}
+      <div
+        className={cn(
+          "fixed inset-0 z-40 bg-black/50 transition-opacity duration-200",
+          drawerOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none",
+        )}
+        onClick={() => setDrawerOpen(false)}
+        aria-hidden="true"
+      />
+      {/* Slide-in drawer */}
+      <div
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-in-out",
+          drawerOpen ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
+        <div className="relative h-full">
+          <Sidebar isMobile onNavClick={() => setDrawerOpen(false)} />
+          <button
+            type="button"
+            className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus:outline-none"
+            onClick={() => setDrawerOpen(false)}
+            aria-label="Close navigation"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      </div>
+    </div>
+    </>
   );
 }

@@ -16,12 +16,33 @@ import { taskApi } from "@/lib/api/tasks";
 import { useAuthStore } from "@/lib/store/auth";
 import type { ProjectRecommendationMetadata } from "@/lib/data/chat";
 
-function apiError(err: unknown): string {
+function getErrorMessage(err: unknown): string {
   if (err && typeof err === "object" && "response" in err) {
-    const detail = (err as { response?: { data?: { detail?: string } } })
-      .response?.data?.detail;
-    if (detail) return String(detail);
+    const data = (err as { response?: { data?: unknown } }).response?.data;
+    if (data && typeof data === "object") {
+      // Pydantic validation errors: detail is an array of {loc, msg, type} objects
+      if ("detail" in data) {
+        const detail = (data as { detail: unknown }).detail;
+        if (typeof detail === "string") return detail;
+        if (Array.isArray(detail)) {
+          const messages = detail
+            .map((d) =>
+              d && typeof d === "object" && "msg" in d ? String((d as { msg: unknown }).msg) : String(d)
+            )
+            .filter(Boolean);
+          return messages.join("; ") || "Validation error";
+        }
+        if (detail && typeof detail === "object" && "msg" in detail) {
+          return String((detail as { msg: unknown }).msg);
+        }
+      }
+      // Some APIs return a top-level message field
+      if ("message" in data) {
+        return String((data as { message: unknown }).message);
+      }
+    }
   }
+  if (err instanceof Error) return err.message;
   return "Something went wrong. Please try again.";
 }
 
@@ -68,13 +89,19 @@ export function CreateProjectDialog({
 
   const { mutate, isPending } = useMutation({
     mutationFn: async () => {
+      // Use || null so an empty string (e.g. when conv.agent_id is null) is
+      // treated as no owner rather than an invalid UUID that causes a 422.
+      const resolvedOwnerAgentId = ownerAgentId || null;
+
       const project = await projectApi.create({
         organization_id: currentOrgId!,
         name: name.trim(),
         description: description.trim() || undefined,
         status,
-        owner_agent_id: ownerAgentId ?? null,
+        owner_agent_id: resolvedOwnerAgentId,
       });
+
+      console.log("Project created:", project);
 
       const phaseTasks = metadata?.phases ?? [];
       const milestones = metadata?.milestones ?? [];
@@ -82,16 +109,32 @@ export function CreateProjectDialog({
       const priority = metadata?.priority ?? "Medium";
 
       if ((phaseTasks.length > 0 || milestones.length > 0 || tasks.length > 0) && currentOrgId) {
-        const result = await taskApi.createFromProject({
+        // Clamp titles to 255 chars to satisfy the backend's max_length constraint.
+        const safePhaseTask = phaseTasks.map((pt) => ({
+          ...pt,
+          title: pt.title.slice(0, 255),
+        }));
+
+        const payload = {
           project_id: project.id,
           organization_id: currentOrgId,
-          ...(phaseTasks.length > 0
-            ? { phase_tasks: phaseTasks }
+          ...(safePhaseTask.length > 0
+            ? { phase_tasks: safePhaseTask }
             : { milestones, tasks }),
           priority,
-          owner_agent_id: ownerAgentId ?? null,
-        });
-        return { project, taskCount: result.count };
+          owner_agent_id: resolvedOwnerAgentId,
+        };
+
+        console.log("Task generation payload:", payload);
+
+        try {
+          const result = await taskApi.createFromProject(payload);
+          console.log("Task generation response:", result);
+          return { project, taskCount: result.count };
+        } catch (err) {
+          console.error("Task generation error:", err);
+          throw err;
+        }
       }
 
       return { project, taskCount: 0 };
@@ -102,7 +145,7 @@ export function CreateProjectDialog({
       setSuccess(true);
       setTimeout(handleClose, 1200);
     },
-    onError: (err) => setApiErr(apiError(err)),
+    onError: (err) => setApiErr(getErrorMessage(err)),
   });
 
   const handleClose = () => {

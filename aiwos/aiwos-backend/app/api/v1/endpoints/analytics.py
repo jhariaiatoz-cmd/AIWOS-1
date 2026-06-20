@@ -97,6 +97,41 @@ async def dashboard(
         )
     ) or 0.0
 
+    # ── Execution health breakdown ─────────────────────────────────────────────
+    executions_successful = await db.scalar(
+        select(func.count()).where(
+            TaskExecution.organization_id == organization_id,
+            TaskExecution.status == "completed",
+            TaskExecution.deleted_at.is_(None),
+        )
+    ) or 0
+
+    executions_failed = await db.scalar(
+        select(func.count()).where(
+            TaskExecution.organization_id == organization_id,
+            TaskExecution.status == "failed",
+            TaskExecution.deleted_at.is_(None),
+        )
+    ) or 0
+
+    executions_retried = await db.scalar(
+        select(func.count()).where(
+            TaskExecution.organization_id == organization_id,
+            TaskExecution.status == "completed",
+            TaskExecution.retry_count > 0,
+            TaskExecution.deleted_at.is_(None),
+        )
+    ) or 0
+
+    # Count executions where a fallback provider was recorded in output_data JSONB
+    executions_with_fallback = await db.scalar(
+        select(func.count()).where(
+            TaskExecution.organization_id == organization_id,
+            TaskExecution.output_data["fallback_provider"].astext.isnot(None),
+            TaskExecution.deleted_at.is_(None),
+        )
+    ) or 0
+
     stats = DashboardStats(
         total_agents=total_agents,
         running_tasks=running_tasks,
@@ -106,6 +141,10 @@ async def dashboard(
         total_executions=total_executions,
         workflow_count=workflow_count,
         total_cost_today=float(cost_today),
+        executions_successful=int(executions_successful),
+        executions_failed=int(executions_failed),
+        executions_retried=int(executions_retried),
+        executions_with_fallback=int(executions_with_fallback),
     )
 
     # ── Departments ───────────────────────────────────────────────────────────

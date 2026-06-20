@@ -18,13 +18,17 @@ Two entry points:
       its native message-array format so role semantics are preserved.
 """
 
+import asyncio
+from enum import Enum
 from typing import Literal, TypedDict
 
 from pydantic import BaseModel
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, RateLimitError as _OAIRateLimitError, APIStatusError as _OAIAPIStatusError, APITimeoutError as _OAIAPITimeoutError
 import anthropic
+from anthropic import RateLimitError as _AnthRateLimitError, APIStatusError as _AnthAPIStatusError, APITimeoutError as _AnthAPITimeoutError
 from google import genai as google_genai
 from google.genai import types as genai_types
+from google.api_core import exceptions as _google_exceptions
 
 from app.core.config import settings
 
@@ -45,6 +49,126 @@ class LLMResponse(BaseModel):
     input_tokens: int
     output_tokens: int
     cost: float
+
+
+# ---------------------------------------------------------------------------
+# Transient-error detection
+# ---------------------------------------------------------------------------
+
+def is_retryable_error(exc: Exception) -> bool:
+    """Return True for transient provider errors that should trigger a retry."""
+    # OpenAI: rate-limit (429) and timeout are always retryable;
+    # other 5xx status codes are retryable too.
+    if isinstance(exc, (_OAIRateLimitError, _OAIAPITimeoutError)):
+        return True
+    if isinstance(exc, _OAIAPIStatusError) and exc.status_code in {500, 502, 503, 504}:
+        return True
+    # Anthropic: same logic
+    if isinstance(exc, (_AnthRateLimitError, _AnthAPITimeoutError)):
+        return True
+    if isinstance(exc, _AnthAPIStatusError) and exc.status_code in {500, 502, 503, 504}:
+        return True
+    # Gemini / Google API Core
+    if isinstance(exc, (
+        _google_exceptions.ResourceExhausted,   # 429
+        _google_exceptions.InternalServerError,  # 500
+        _google_exceptions.ServiceUnavailable,   # 503
+        _google_exceptions.DeadlineExceeded,     # timeout / 504
+    )):
+        return True
+    # Generic Python timeout
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Structured error classification
+# ---------------------------------------------------------------------------
+
+class ProviderErrorType(str, Enum):
+    QUOTA_EXCEEDED = "quota_exceeded"
+    RATE_LIMITED = "rate_limited"
+    SERVICE_UNAVAILABLE = "service_unavailable"
+    AUTH_ERROR = "auth_error"
+    UNKNOWN = "unknown"
+
+
+def classify_provider_error(exc: Exception) -> ProviderErrorType:
+    """Classify a provider exception into a structured, machine-readable error type."""
+    # Gemini: RESOURCE_EXHAUSTED covers both quota and rate-limit signals
+    if isinstance(exc, _google_exceptions.ResourceExhausted):
+        return ProviderErrorType.QUOTA_EXCEEDED
+    if isinstance(exc, (_google_exceptions.ServiceUnavailable, _google_exceptions.InternalServerError, _google_exceptions.DeadlineExceeded)):
+        return ProviderErrorType.SERVICE_UNAVAILABLE
+    # OpenAI
+    if isinstance(exc, _OAIRateLimitError):
+        return ProviderErrorType.RATE_LIMITED
+    if isinstance(exc, _OAIAPIStatusError):
+        if exc.status_code == 429:
+            return ProviderErrorType.QUOTA_EXCEEDED
+        if exc.status_code in {500, 502, 503, 504}:
+            return ProviderErrorType.SERVICE_UNAVAILABLE
+    # Anthropic
+    if isinstance(exc, _AnthRateLimitError):
+        return ProviderErrorType.RATE_LIMITED
+    if isinstance(exc, _AnthAPIStatusError):
+        if exc.status_code == 429:
+            return ProviderErrorType.QUOTA_EXCEEDED
+        if exc.status_code in {500, 502, 503, 504}:
+            return ProviderErrorType.SERVICE_UNAVAILABLE
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError, _OAIAPITimeoutError, _AnthAPITimeoutError)):
+        return ProviderErrorType.SERVICE_UNAVAILABLE
+    return ProviderErrorType.UNKNOWN
+
+
+# ---------------------------------------------------------------------------
+# Provider fallback helpers
+# ---------------------------------------------------------------------------
+
+# Priority order to try when a provider fails
+_FALLBACK_CHAINS: dict[str, list[str]] = {
+    "gemini":    ["openai", "anthropic"],
+    "openai":    ["anthropic", "gemini"],
+    "anthropic": ["openai", "gemini"],
+}
+
+# Cheapest/fastest model to use when falling back to a provider
+_CHEAPEST_MODELS: dict[str, str] = {
+    "openai":    "gpt-4o-mini",
+    "anthropic": "claude-haiku-4-5-20251001",
+    "gemini":    "gemini-2.5-flash",
+}
+
+
+def get_provider_for_model(model: str) -> str:
+    """Derive the provider name from a model string prefix."""
+    if model.startswith("gpt-"):
+        return "openai"
+    if model.startswith("claude-"):
+        return "anthropic"
+    if model.startswith("gemini-"):
+        return "gemini"
+    return "unknown"
+
+
+def get_fallback_models(original_model: str) -> list[tuple[str, str]]:
+    """
+    Return (provider, model) pairs to try after the original model fails,
+    filtered to only those with a configured API key.
+    """
+    original_provider = get_provider_for_model(original_model)
+    candidates = _FALLBACK_CHAINS.get(original_provider, [])
+    key_map = {
+        "openai":    bool(settings.OPENAI_API_KEY),
+        "anthropic": bool(settings.ANTHROPIC_API_KEY),
+        "gemini":    bool(settings.GEMINI_API_KEY),
+    }
+    return [
+        (provider, _CHEAPEST_MODELS[provider])
+        for provider in candidates
+        if key_map.get(provider, False)
+    ]
 
 
 # ---------------------------------------------------------------------------

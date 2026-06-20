@@ -39,6 +39,8 @@ export type Agent = {
   performance: number;
   avatarColor: string;
   initials: string;
+  provider: string | null;
+  model: string | null;
 };
 
 export type Activity = {

@@ -64,6 +64,8 @@ _DEPARTMENTS = [
     {"name": "Research",     "description": "Data analysis, market research, and insights"},
     {"name": "Support",      "description": "Customer support and issue resolution"},
     {"name": "Finance",      "description": "Financial planning, budgeting, and forecasting"},
+    {"name": "Strategy",     "description": "Business strategy, technical planning, and organizational direction"},
+    {"name": "Intelligence", "description": "Universal AI assistance, cross-functional intelligence, and general knowledge support"},
 ]
 
 _AGENTS = [
@@ -220,6 +222,96 @@ _AGENTS = [
         ),
         "provider": "gemini",
         "model": "gemini-2.5-flash",
+        "skills": [],
+    },
+    {
+        "name": "GPT Strategy Assistant",
+        "role": "Business Strategy & Technical Planning",
+        "department": "Strategy",
+        "goal": (
+            "Provide expert business strategy guidance, technical planning, and "
+            "architectural recommendations to drive organizational success."
+        ),
+        "instructions": (
+            "You are a seasoned business strategist and technical advisor powered by GPT-4o. "
+            "Help with strategic planning, software architecture decisions, technical "
+            "documentation, requirement analysis, project management frameworks, and "
+            "system design. Structure every strategic recommendation with clear objectives, "
+            "key results, risk assessments, and actionable next steps. For technical "
+            "planning, always address scalability, maintainability, and team capacity. "
+            "Ask clarifying questions to understand business context before proposing solutions."
+        ),
+        "provider": "openai",
+        "model": "gpt-4o",
+        "skills": [
+            "Strategic Planning",
+            "Software Architecture",
+            "Technical Documentation",
+            "Requirement Analysis",
+            "Project Management",
+            "System Design",
+        ],
+    },
+    {
+        "name": "Gemini Research Assistant",
+        "role": "Research & Knowledge Specialist",
+        "department": "Research",
+        "goal": (
+            "Deliver deep research, market intelligence, and knowledge synthesis "
+            "to inform business decisions and competitive strategy."
+        ),
+        "instructions": (
+            "You are a comprehensive research specialist powered by Gemini 2.5 Pro. "
+            "Help with in-depth research, market analysis, competitive intelligence, "
+            "knowledge extraction from complex documents, summarization, and professional "
+            "report writing. Structure every research output with an executive summary, "
+            "key findings, supporting evidence, methodology, and recommendations. "
+            "Cite sources and distinguish between confirmed facts and inferences. "
+            "Tailor the depth and format of reports to the audience: executive briefs "
+            "for leadership, detailed analyses for specialist teams."
+        ),
+        "provider": "google",
+        "model": "gemini-2.5-pro",
+        "skills": [
+            "Research",
+            "Market Analysis",
+            "Knowledge Extraction",
+            "Summarization",
+            "Competitive Intelligence",
+            "Report Writing",
+        ],
+    },
+    {
+        "name": "AIWOS Copilot",
+        "role": "Universal AI Assistant",
+        "department": "Intelligence",
+        "goal": "Provide accurate and helpful answers to any user question.",
+        "instructions": (
+            "Act as a universal AI assistant capable of answering questions, writing code, "
+            "explaining concepts, generating documentation, and assisting with research."
+        ),
+        "provider": "openai",
+        "model": "gpt-4o",
+        "skills": [
+            "General Question Answering",
+            "Software Development",
+            "Debugging",
+            "System Design",
+            "FastAPI",
+            "Next.js",
+            "React",
+            "TypeScript",
+            "Python",
+            "Database Design",
+            "Documentation",
+            "Technical Writing",
+            "Business Analysis",
+            "Research",
+            "Planning",
+            "Problem Solving",
+            "Learning Assistance",
+            "Career Guidance",
+        ],
     },
 ]
 
@@ -266,11 +358,12 @@ async def provision_organization(db: AsyncSession, org_id: uuid.UUID) -> None:
         agent = Agent(
             id=uuid.uuid4(),
             organization_id=org_id,
-            department_id=dept_map.get(a["department"]),
+            department_id=dept_map.get(a.get("department", "")),
             name=a["name"],
             role=a["role"],
             goal=a["goal"],
             instructions=a["instructions"],
+            skills=a.get("skills", []),
             provider=a["provider"],
             model=a["model"],
             status="Active",

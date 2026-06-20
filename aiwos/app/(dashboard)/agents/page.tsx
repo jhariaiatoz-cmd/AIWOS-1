@@ -54,6 +54,8 @@ function toDisplayAgent(a: AgentApiResponse): Agent {
     performance: perf,
     avatarColor: avatarColor(a.id),
     initials,
+    provider: a.provider,
+    model: a.model,
   };
 }
 
