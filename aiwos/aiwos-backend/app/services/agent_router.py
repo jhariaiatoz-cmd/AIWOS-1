@@ -3,7 +3,7 @@ Agent Router — priority-tiered intent classification for user prompts.
 
 Algorithm
 ---------
-Each routing rule carries a `priority` level (1 = highest, 7 = lowest).
+Each routing rule carries a `priority` level (1 = highest, 14 = lowest).
 
 1. Score every rule independently (phrase matches + keyword matches).
 2. Collect only rules with score > 0.
@@ -13,15 +13,22 @@ Each routing rule carries a `priority` level (1 = highest, 7 = lowest).
 6. If no DB row matches, try the next best scored rule (any tier).
 7. Final fallback: first Active agent in the list (logged as "General").
 
-Priority tiers (from spec):
-  1 — HR / Recruitment   (hire, recruit, interview, candidate …)
-  2 — Research / Analysis (research, market, industry, trends …)
-  3 — Sales / Revenue    (sales, lead, crm, outbound, pipeline …)
-  4 — Finance / Budgeting (budget, forecast, finance, expense …)
-  5 — Marketing / Brand  (marketing, campaign, brand, seo …)
-  6 — Customer Support   (support, ticket, complaint …)
-  7 — Engineering        (react, python, code, build … lowest, must not
-                          override intent signals from tiers 1-6)
+Priority tiers:
+   1 — HR / Recruitment        (hire, recruit, interview, candidate …)
+   2 — Research / Analysis     (research, market, industry, trends …)
+   3 — Sales / Revenue         (sales, lead, crm, outbound, pipeline …)
+   4 — Finance / Budgeting     (budget, forecast, finance, expense …)
+   5 — Marketing / Brand       (marketing, campaign, brand, seo …)
+   6 — Customer Support        (support, ticket, complaint …)
+   7 — Legal                   (contract, nda, legal, ip, liability …)
+   8 — Compliance              (gdpr, soc2, audit, regulation …)
+   9 — Cybersecurity           (security, threat, owasp, pentest …)
+  10 — Product Management      (roadmap, prd, backlog, prioritization …)
+  11 — Project Management      (milestone, gantt, wbs, stakeholder …)
+  12 — Data Analysis           (dashboard, kpi, cohort, sql analytics …)
+  13 — AI Architecture         (llm, rag, mlops, vector database …)
+  14 — Engineering / Full Stack (react, python, code, build … lowest, must
+                                 not override intent signals from tiers 1-13)
 
 Scoring per rule:
   - exact phrase match (case-insensitive substring) → 3 pts each
@@ -43,7 +50,26 @@ log = logging.getLogger(__name__)
 
 ROUTING_TABLE: list[dict] = [
 
-    # ── Priority 1 · HR / Recruitment (highest) ───────────────────────────────
+    # ── Priority 1a · Technical Recruiting (Recruiter specialist) ───────────────
+    # Same priority as HR Manager tier; higher score on sourcing-specific prompts
+    # wins the tie-break so Recruiter is selected over HR Manager for those tasks.
+    {
+        "priority": 1,
+        "intent": "Technical Recruiting",
+        "agent_name": "Recruiter",
+        "phrases": [
+            "candidate sourcing", "linkedin sourcing", "sourcing candidates",
+            "outreach template", "recruiter screen", "resume review",
+            "technical screening", "sourcing strategy", "boolean search",
+            "passive candidates",
+        ],
+        "keywords": [
+            "sourcing", "applicant", "ats", "job board", "recruiter",
+            "technical screen", "cold linkedin", "inmail", "job posting site",
+        ],
+    },
+
+    # ── Priority 1b · HR / Recruitment (HR Manager — manager-level tasks) ────
     {
         "priority": 1,
         "intent": "HR / Recruitment",
@@ -65,9 +91,9 @@ ROUTING_TABLE: list[dict] = [
         ],
         "keywords": [
             "hire", "hiring", "recruit", "recruiter", "recruitment",
-            "interview", "candidate", "candidates", "onboard", "onboarding",
+            "interview", "candidate", "candidates", "onboard",
             "employee", "employees", "talent", "staff", "staffing",
-            "headcount", "culture", "retention", "compensation",
+            "headcount", "culture", "compensation",
             "benefits", "payroll", "hr", "human resources",
             "job description", "jd", "workforce planning",
         ],
@@ -87,14 +113,32 @@ ROUTING_TABLE: list[dict] = [
             "analyze the market", "research the",
         ],
         "keywords": [
-            "research", "analyze", "analysis", "insights", "trends",
+            "research", "analyze", "insights", "trends",
             "industry", "competitors", "competitor", "benchmark", "survey",
             "findings", "landscape", "sector", "study", "whitepaper",
             "investigate", "data-driven", "ev", "saas market",
         ],
     },
 
-    # ── Priority 3 · Sales / Revenue ──────────────────────────────────────────
+    # ── Priority 3a · Sales Agent (IC execution tasks) ───────────────────────
+    # Same priority as Sales Manager tier. "outreach" and "prospecting" are kept
+    # out of the Sales Manager keywords so IC prompts score higher here.
+    {
+        "priority": 3,
+        "intent": "Sales Execution",
+        "agent_name": "Sales Agent",
+        "phrases": [
+            "cold email", "cold outreach", "cold call", "outreach script",
+            "prospecting email", "book a demo", "schedule a demo",
+            "sales call script", "follow-up email", "linkedin message",
+        ],
+        "keywords": [
+            "outreach", "prospecting", "cold calling", "cold emailing",
+            "sales development", "sdr script", "bdr script", "demo request",
+        ],
+    },
+
+    # ── Priority 3b · Sales / Revenue (Sales Manager — strategy tasks) ───────
     {
         "priority": 3,
         "intent": "Sales / Revenue",
@@ -109,8 +153,8 @@ ROUTING_TABLE: list[dict] = [
         ],
         "keywords": [
             "sales", "lead", "leads", "crm", "outbound", "inbound",
-            "pipeline", "prospect", "prospects", "quota", "conversion",
-            "deal", "deals", "outreach", "b2b", "sdr", "bdr",
+            "prospect", "prospects", "quota", "conversion",
+            "deal", "deals", "b2b", "sdr", "bdr",
             "account executive", "upsell", "cross-sell", "closing",
         ],
     },
@@ -136,7 +180,25 @@ ROUTING_TABLE: list[dict] = [
         ],
     },
 
-    # ── Priority 5 · Marketing / Brand ───────────────────────────────────────
+    # ── Priority 5a · Content Strategy (Content Strategist specialist) ──────
+    # Same priority as Marketing Manager tier; agent_name "Content" scores a
+    # +4 bonus when "content" appears in the prompt, winning over Marketing Manager.
+    {
+        "priority": 5,
+        "intent": "Content Strategy",
+        "agent_name": "Content",
+        "phrases": [
+            "content calendar", "editorial calendar", "content strategy",
+            "content plan", "content creation", "brand voice", "brand guidelines",
+            "thought leadership", "content audit", "content brief",
+        ],
+        "keywords": [
+            "editorial", "copywriting", "blog post", "newsletter content",
+            "content writer", "content creation", "brand storytelling",
+        ],
+    },
+
+    # ── Priority 5b · Marketing / Brand (Marketing Manager — strategy tasks) ─
     {
         "priority": 5,
         "intent": "Marketing / Brand",
@@ -155,7 +217,27 @@ ROUTING_TABLE: list[dict] = [
         ],
     },
 
-    # ── Priority 6 · Customer Support ────────────────────────────────────────
+    # ── Priority 6a · Customer Success (CSM) ─────────────────────────────────
+    # Dedicated tier for CSM-specific intents. Placed above Technical Support
+    # so "customer success" prompts reach Customer Success Manager, not Support Specialist.
+    {
+        "priority": 6,
+        "intent": "Customer Success",
+        "agent_name": "Customer Success",
+        "phrases": [
+            "customer success", "customer onboarding", "customer retention",
+            "churn prevention", "quarterly business review", "customer health score",
+            "success plan", "expansion opportunity", "customer expansion",
+            "customer lifecycle", "customer adoption",
+        ],
+        "keywords": [
+            "churn", "qbr", "csm", "health score", "time-to-value",
+            "customer success manager", "success plan", "customer journey",
+        ],
+    },
+
+    # ── Priority 6b · Technical Support ──────────────────────────────────────
+    # Same priority tier as Customer Success; higher-scoring rule wins when both fire.
     {
         "priority": 6,
         "intent": "Customer Support",
@@ -174,11 +256,144 @@ ROUTING_TABLE: list[dict] = [
         ],
     },
 
-    # ── Priority 7 · Engineering / Full Stack (lowest) ───────────────────────
-    # Tech keywords live here so they never override HR/Research/Sales/Finance
-    # when those intent signals are also present in the prompt.
+    # ── Priority 7 · Legal ────────────────────────────────────────────────────
     {
         "priority": 7,
+        "intent": "Legal",
+        "agent_name": "Legal",
+        "phrases": [
+            "contract review", "review this contract", "legal review",
+            "nda review", "draft an nda", "terms of service",
+            "privacy policy", "legal advice", "legal guidance", "legal risk",
+            "employment contract", "vendor agreement", "intellectual property",
+            "legal compliance", "offer letter legal", "licensing agreement",
+        ],
+        "keywords": [
+            "legal", "contract", "nda", "lawsuit", "litigation", "clause",
+            "attorney", "counsel", "ip", "trademark", "copyright", "patent",
+            "liability", "indemnity", "warranty", "jurisdiction", "arbitration",
+            "terms", "agreement", "legal opinion",
+        ],
+    },
+
+    # ── Priority 8 · Compliance ───────────────────────────────────────────────
+    {
+        "priority": 8,
+        "intent": "Risk & Compliance",
+        "agent_name": "Compliance",
+        "phrases": [
+            "compliance framework", "soc2 compliance", "iso 27001",
+            "gdpr compliance", "hipaa compliance", "audit preparation",
+            "compliance audit", "risk assessment", "risk management",
+            "control framework", "compliance policy", "regulatory audit",
+        ],
+        "keywords": [
+            "compliance", "regulatory", "audit", "soc2", "iso27001",
+            "hipaa", "controls", "governance", "regulation", "certify",
+            "certifications", "regulatory risk", "compliance officer",
+        ],
+    },
+
+    # ── Priority 9 · Cybersecurity ────────────────────────────────────────────
+    {
+        "priority": 9,
+        "intent": "Cybersecurity",
+        "agent_name": "Cybersecurity",
+        "phrases": [
+            "security review", "threat model", "vulnerability scan",
+            "penetration test", "security audit", "owasp review",
+            "security architecture", "incident response", "data breach",
+            "security assessment", "secure my", "harden the",
+        ],
+        "keywords": [
+            "cybersecurity", "vulnerability", "exploit", "threat",
+            "owasp", "pentest", "firewall", "encryption",
+            "zero trust", "siem", "xdr", "malware", "phishing",
+            "ransomware", "intrusion", "cve", "security posture",
+        ],
+    },
+
+    # ── Priority 10 · Product Management ─────────────────────────────────────
+    {
+        "priority": 10,
+        "intent": "Product Management",
+        "agent_name": "Product",
+        "phrases": [
+            "product roadmap", "product strategy", "feature prioritization",
+            "product requirements", "write a prd", "product backlog",
+            "go-to-market strategy", "product launch", "okr planning",
+            "product vision", "prd document", "product spec",
+            "user stories for", "acceptance criteria",
+        ],
+        "keywords": [
+            "roadmap", "prd", "backlog", "epics", "persona",
+            "mvp", "product-market fit", "prioritization",
+            "product manager", "product owner", "rice score",
+            "moscow", "jobs to be done",
+        ],
+    },
+
+    # ── Priority 11 · Project Management ─────────────────────────────────────
+    {
+        "priority": 11,
+        "intent": "Project Management",
+        "agent_name": "Project",
+        "phrases": [
+            "project plan", "project timeline", "project schedule",
+            "gantt chart", "project kickoff", "project status report",
+            "milestone plan", "project delivery", "risk register",
+            "stakeholder map", "project retrospective", "work breakdown",
+        ],
+        "keywords": [
+            "milestone", "deliverable", "gantt", "wbs",
+            "stakeholder", "scope", "dependencies", "blockers",
+            "retrospective", "velocity", "project manager",
+            "program manager", "delivery plan",
+        ],
+    },
+
+    # ── Priority 12 · Data Analysis ───────────────────────────────────────────
+    {
+        "priority": 12,
+        "intent": "Data Analysis",
+        "agent_name": "Data",
+        "phrases": [
+            "data analysis", "data visualization", "analyze this data",
+            "sql query for", "data pipeline", "dashboard design",
+            "kpi dashboard", "cohort analysis", "data report",
+            "analytics report", "data insights", "metric analysis",
+            "build a dashboard", "data-driven report",
+        ],
+        "keywords": [
+            "dashboard", "cohort", "funnel", "attribution",
+            "pandas", "dataframe", "matplotlib", "tableau", "looker",
+            "bigquery", "analytics", "etl", "data warehouse",
+            "data analyst", "business intelligence", "bi report",
+        ],
+    },
+
+    # ── Priority 13 · AI Architecture ────────────────────────────────────────
+    {
+        "priority": 13,
+        "intent": "AI Architecture",
+        "agent_name": "AI Solution",
+        "phrases": [
+            "ai architecture", "llm integration", "ai strategy",
+            "rag pipeline", "ai solution", "vector database",
+            "ai system design", "mlops pipeline", "multi-agent system",
+            "ai pipeline", "prompt engineering", "fine-tune a model",
+        ],
+        "keywords": [
+            "llm", "embeddings", "rag", "mlops", "fine-tuning",
+            "ai model", "langchain", "inference", "context window",
+            "ai architect", "foundation model", "ai governance",
+        ],
+    },
+
+    # ── Priority 14 · Engineering / Full Stack (lowest) ──────────────────────
+    # Tech keywords live here so they never override higher-tier intent signals.
+    {
+        "priority": 14,
         "intent": "Engineering / Full Stack",
         "agent_name": "Full Stack",
         "phrases": [
@@ -217,7 +432,8 @@ def _score_rule(prompt_lower: str, rule: dict) -> int:
     for kw in rule["keywords"]:
         if re.search(r"\b" + re.escape(kw) + r"\b", prompt_lower):
             score += 1
-    if rule["agent_name"].lower() in prompt_lower:
+    # Use word-boundary check so "hr" in "threat" does not trigger the HR bonus.
+    if re.search(r"\b" + re.escape(rule["agent_name"].lower()) + r"\b", prompt_lower):
         score += 4
     return score
 
