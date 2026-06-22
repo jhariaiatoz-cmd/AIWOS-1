@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
@@ -744,10 +744,11 @@ async def analytics_metrics(
 
     elif time_range == "90d":
         start_dt = now - timedelta(days=91)
+        _week = literal_column("'week'")
 
         created_rows = await db.execute(
             select(
-                func.date_trunc("week", Task.created_at).label("period"),
+                func.date_trunc(_week, Task.created_at).label("period"),
                 func.count().label("cnt"),
             )
             .where(
@@ -755,13 +756,13 @@ async def analytics_metrics(
                 Task.created_at >= start_dt,
                 Task.deleted_at.is_(None),
             )
-            .group_by(func.date_trunc("week", Task.created_at))
+            .group_by(func.date_trunc(_week, Task.created_at))
         )
         created_map = {r.period.date(): int(r.cnt) for r in created_rows.all()}
 
         done_rows = await db.execute(
             select(
-                func.date_trunc("week", Task.updated_at).label("period"),
+                func.date_trunc(_week, Task.updated_at).label("period"),
                 func.count().label("cnt"),
             )
             .where(
@@ -770,7 +771,7 @@ async def analytics_metrics(
                 Task.updated_at >= start_dt,
                 Task.deleted_at.is_(None),
             )
-            .group_by(func.date_trunc("week", Task.updated_at))
+            .group_by(func.date_trunc(_week, Task.updated_at))
         )
         done_map = {r.period.date(): int(r.cnt) for r in done_rows.all()}
 
@@ -787,10 +788,11 @@ async def analytics_metrics(
 
     else:  # 1y
         start_dt = now - timedelta(days=366)
+        _month = literal_column("'month'")
 
         created_rows = await db.execute(
             select(
-                func.date_trunc("month", Task.created_at).label("period"),
+                func.date_trunc(_month, Task.created_at).label("period"),
                 func.count().label("cnt"),
             )
             .where(
@@ -798,13 +800,13 @@ async def analytics_metrics(
                 Task.created_at >= start_dt,
                 Task.deleted_at.is_(None),
             )
-            .group_by(func.date_trunc("month", Task.created_at))
+            .group_by(func.date_trunc(_month, Task.created_at))
         )
         created_map = {r.period.date(): int(r.cnt) for r in created_rows.all()}
 
         done_rows = await db.execute(
             select(
-                func.date_trunc("month", Task.updated_at).label("period"),
+                func.date_trunc(_month, Task.updated_at).label("period"),
                 func.count().label("cnt"),
             )
             .where(
@@ -813,7 +815,7 @@ async def analytics_metrics(
                 Task.updated_at >= start_dt,
                 Task.deleted_at.is_(None),
             )
-            .group_by(func.date_trunc("month", Task.updated_at))
+            .group_by(func.date_trunc(_month, Task.updated_at))
         )
         done_map = {r.period.date(): int(r.cnt) for r in done_rows.all()}
 
@@ -828,9 +830,14 @@ async def analytics_metrics(
             ))
 
     # ── Tasks by department ───────────────────────────────────────────────────
+    # Use literal_column for the fallback string so SELECT and GROUP BY produce
+    # the same SQL expression (same parameter slot); a bind param causes a
+    # PostgreSQL GroupingError because $1 in SELECT != $3 in GROUP BY.
+    _unassigned = literal_column("'Unassigned'")
+    dept_name_expr = func.coalesce(Department.name, _unassigned)
     dept_rows = await db.execute(
         select(
-            func.coalesce(Department.name, "Unassigned").label("dept_name"),
+            dept_name_expr.label("dept_name"),
             func.count(Task.id).label("task_count"),
         )
         .select_from(Task)
@@ -840,7 +847,7 @@ async def analytics_metrics(
             Task.organization_id == organization_id,
             Task.deleted_at.is_(None),
         )
-        .group_by(func.coalesce(Department.name, "Unassigned"))
+        .group_by(dept_name_expr)
         .order_by(func.count(Task.id).desc())
     )
     dept_task_rows = dept_rows.all()

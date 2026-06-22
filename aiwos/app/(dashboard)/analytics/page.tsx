@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuthStore } from "@/lib/store/auth";
 import { analyticsApi } from "@/lib/api/analytics";
@@ -29,6 +29,7 @@ export default function AnalyticsPage() {
   const [timeRange, setTimeRange] = useState<TimeRange>("7d");
   const { currentOrgId, user } = useAuthStore();
   const isAuthenticated = !user?.isGuest && !!currentOrgId;
+  const queryClient = useQueryClient();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["analytics-metrics", currentOrgId, timeRange],
@@ -38,7 +39,7 @@ export default function AnalyticsPage() {
     refetchOnWindowFocus: true,
   });
 
-  const hasData = data && data.total_tasks > 0;
+  const hasData = !!data;
   const responseTime = data ? formatResponseTime(data.avg_response_time_seconds) : null;
 
   // Response time trend: negative change = improved = show as "up" (green)
@@ -87,6 +88,17 @@ export default function AnalyticsPage() {
           <p className="mt-1 text-xs text-muted-foreground">
             Check your connection or refresh the page.
           </p>
+          <button
+            onClick={() =>
+              queryClient.invalidateQueries({
+                queryKey: ["analytics-metrics", currentOrgId, timeRange],
+              })
+            }
+            className="mt-4 rounded-lg px-4 py-2 text-xs font-medium text-foreground transition-colors"
+            style={{ background: "var(--input-bg)", border: "1px solid var(--border)" }}
+          >
+            Try again
+          </button>
         </div>
       )}
 

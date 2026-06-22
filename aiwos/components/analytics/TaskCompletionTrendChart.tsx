@@ -42,7 +42,7 @@ export function TaskCompletionTrendChart({
 
   const toPoint = (value: number, index: number) => ({
     x: (index / (data.length - 1 || 1)) * (chartWidth - padding * 2) + padding,
-    y: chartHeight - (value / maxValue) * (chartHeight - padding) + 20,
+    y: 20 + (1 - value / maxValue) * (chartHeight - padding),
     value,
   });
 
