@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Loader2, Plus } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { agentsData } from "@/lib/data/agents";
 import { agentApi, type AgentApiResponse } from "@/lib/api/agents";
 import { useAuthStore } from "@/lib/store/auth";
@@ -11,9 +11,11 @@ import { FilterBar } from "@/components/agents/FilterBar";
 import { AgentTable } from "@/components/agents/AgentTable";
 import { EmptyState } from "@/components/common/EmptyState";
 import { CreateAgentDialog } from "@/components/agents/CreateAgentDialog";
+import { EditAgentDialog } from "@/components/agents/EditAgentDialog";
+import { DeleteAgentDialog } from "@/components/agents/DeleteAgentDialog";
+import { DeleteAllAgentsDialog } from "@/components/agents/DeleteAllAgentsDialog";
 import type { Agent } from "@/lib/types";
 
-// Deterministic avatar colour derived from UUID
 const GRADIENTS = [
   "linear-gradient(135deg, #7c3aed, #06b6d4)",
   "linear-gradient(135deg, #06b6d4, #10b981)",
@@ -28,11 +30,10 @@ function avatarColor(id: string): string {
   return GRADIENTS[n % GRADIENTS.length];
 }
 
-// Backend status → component status
 function mapStatus(s: string): "Active" | "Idle" | "Paused" {
   if (s === "Active") return "Active";
   if (s === "Paused") return "Paused";
-  return "Idle"; // Created / Retired
+  return "Idle";
 }
 
 function toDisplayAgent(a: AgentApiResponse): Agent {
@@ -42,7 +43,6 @@ function toDisplayAgent(a: AgentApiResponse): Agent {
     .join("")
     .slice(0, 2)
     .toUpperCase();
-  // Derive a pseudo-performance from the id so bars aren't all 0
   const perf = 70 + (parseInt(a.id.replace(/-/g, "").slice(-2), 16) % 30);
   return {
     id: a.id,
@@ -62,8 +62,12 @@ function toDisplayAgent(a: AgentApiResponse): Agent {
 export default function AgentsPage() {
   const { user, currentOrgId } = useAuthStore();
   const isGuest = user?.isGuest ?? true;
+  const queryClient = useQueryClient();
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingAgent, setEditingAgent] = useState<AgentApiResponse | null>(null);
+  const [deletingAgent, setDeletingAgent] = useState<AgentApiResponse | null>(null);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
@@ -76,6 +80,32 @@ export default function AgentsPage() {
     queryKey: ["agents", currentOrgId],
     queryFn: () => agentApi.list(currentOrgId!),
     enabled: !isGuest && !!currentOrgId,
+  });
+
+  const { mutate: updateStatus } = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      agentApi.update(id, { status }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["agents", currentOrgId] }),
+  });
+
+  const { mutate: duplicateAgent } = useMutation({
+    mutationFn: (src: AgentApiResponse) =>
+      agentApi.create({
+        organization_id: src.organization_id,
+        name: `${src.name} (Copy)`,
+        role: src.role,
+        goal: src.goal,
+        instructions: src.instructions,
+        skills: src.skills,
+        provider: src.provider,
+        model: src.model,
+        status: "Created",
+        is_manager: src.is_manager,
+        tools: src.tools as unknown[],
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["agents", currentOrgId] }),
   });
 
   const rawAgents: Agent[] = isGuest
@@ -103,6 +133,30 @@ export default function AgentsPage() {
     setSelectedStatus("");
   };
 
+  const handleEdit = (agentId: string) => {
+    const full = apiAgents?.find((a) => a.id === agentId);
+    if (full) setEditingAgent(full);
+  };
+
+  const handleDelete = (agentId: string) => {
+    const full = apiAgents?.find((a) => a.id === agentId);
+    if (full) setDeletingAgent(full);
+  };
+
+  const handleDuplicate = (agentId: string) => {
+    const full = apiAgents?.find((a) => a.id === agentId);
+    if (full) duplicateAgent(full);
+  };
+
+  const handleActivate = (agentId: string) =>
+    updateStatus({ id: agentId, status: "Active" });
+
+  const handleDeactivate = (agentId: string) =>
+    updateStatus({ id: agentId, status: "Paused" });
+
+  const handleArchive = (agentId: string) =>
+    updateStatus({ id: agentId, status: "Retired" });
+
   return (
     <div className="min-h-full">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -113,14 +167,30 @@ export default function AgentsPage() {
             assignments.
           </p>
         </div>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-all hover:-translate-y-px"
-          style={{ background: "var(--purple)" }}
-        >
-          <Plus size={16} />
-          Create Agent
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {!isGuest && rawAgents.length > 0 && (
+            <button
+              onClick={() => setDeleteAllOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-medium transition-all hover:-translate-y-px"
+              style={{
+                borderColor: "rgba(239,68,68,0.4)",
+                color: "var(--red, #ef4444)",
+                background: "rgba(239,68,68,0.05)",
+              }}
+            >
+              <Trash2 size={14} />
+              Delete All
+            </button>
+          )}
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-all hover:-translate-y-px"
+            style={{ background: "var(--purple)" }}
+          >
+            <Plus size={16} />
+            Create Agent
+          </button>
+        </div>
       </div>
 
       {!isGuest && !currentOrgId && (
@@ -169,7 +239,15 @@ export default function AgentsPage() {
             </p>
           </div>
           {filteredAgents.length > 0 ? (
-            <AgentTable agents={filteredAgents} />
+            <AgentTable
+              agents={filteredAgents}
+              onEdit={!isGuest ? handleEdit : undefined}
+              onDuplicate={!isGuest ? handleDuplicate : undefined}
+              onActivate={!isGuest ? handleActivate : undefined}
+              onDeactivate={!isGuest ? handleDeactivate : undefined}
+              onArchive={!isGuest ? handleArchive : undefined}
+              onDelete={!isGuest ? handleDelete : undefined}
+            />
           ) : (
             <EmptyState
               title="No agents found"
@@ -180,6 +258,13 @@ export default function AgentsPage() {
       )}
 
       <CreateAgentDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+      <EditAgentDialog agent={editingAgent} onClose={() => setEditingAgent(null)} />
+      <DeleteAgentDialog agent={deletingAgent} onClose={() => setDeletingAgent(null)} />
+      <DeleteAllAgentsDialog
+        open={deleteAllOpen}
+        agentCount={rawAgents.length}
+        onClose={() => setDeleteAllOpen(false)}
+      />
     </div>
   );
 }

@@ -15,6 +15,7 @@ from app.schemas.agent import AgentCreate, AgentResponse, AgentUpdate
 from app.services.agent_service import (
     create_agent,
     delete_agent,
+    delete_all_agents,
     get_agent,
     list_agents,
     update_agent,
@@ -42,6 +43,16 @@ async def list_all(
     _: User = Depends(get_current_user),
 ) -> List[Agent]:
     return await list_agents(db, organization_id, skip=skip, limit=limit, status_filter=status)
+
+
+@router.delete("", status_code=status.HTTP_200_OK)
+async def delete_all(
+    organization_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> dict:
+    count = await delete_all_agents(db, organization_id)
+    return {"deleted": count}
 
 
 @router.get("/{agent_id}/workload")

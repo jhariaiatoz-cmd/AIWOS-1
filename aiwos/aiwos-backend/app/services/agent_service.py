@@ -95,3 +95,20 @@ async def delete_agent(db: AsyncSession, agent_id: uuid.UUID) -> None:
     agent = await get_agent(db, agent_id)
     agent.delete()
     await db.commit()
+
+
+async def delete_all_agents(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+) -> int:
+    result = await db.execute(
+        select(Agent).where(
+            Agent.organization_id == organization_id,
+            Agent.deleted_at.is_(None),
+        )
+    )
+    agents = list(result.scalars().all())
+    for agent in agents:
+        agent.delete()
+    await db.commit()
+    return len(agents)

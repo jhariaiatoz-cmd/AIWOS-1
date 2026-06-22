@@ -5,6 +5,12 @@ import type { Agent } from "@/lib/types";
 
 interface AgentTableProps {
   agents: Agent[];
+  onEdit?: (agentId: string) => void;
+  onDuplicate?: (agentId: string) => void;
+  onActivate?: (agentId: string) => void;
+  onDeactivate?: (agentId: string) => void;
+  onArchive?: (agentId: string) => void;
+  onDelete?: (agentId: string) => void;
 }
 
 function StatusBadge({ status }: { status: "Active" | "Idle" | "Paused" }) {
@@ -65,7 +71,15 @@ function ProviderBadge({ provider }: { provider: string | null }) {
   );
 }
 
-export function AgentTable({ agents }: AgentTableProps) {
+export function AgentTable({
+  agents,
+  onEdit,
+  onDuplicate,
+  onActivate,
+  onDeactivate,
+  onArchive,
+  onDelete,
+}: AgentTableProps) {
   return (
     <div
       className="overflow-hidden rounded-xl border"
@@ -197,13 +211,12 @@ export function AgentTable({ agents }: AgentTableProps) {
                 <td className="px-6 py-4 text-center">
                   <ActionMenu
                     label={`Actions for ${agent.name}`}
-                    onView={() => console.log("View", agent.id)}
-                    onEdit={() => console.log("Edit", agent.id)}
-                    onDuplicate={() => console.log("Duplicate", agent.id)}
-                    onActivate={agent.status !== "Active" ? () => console.log("Activate", agent.id) : undefined}
-                    onDeactivate={agent.status === "Active" ? () => console.log("Deactivate", agent.id) : undefined}
-                    onArchive={() => console.log("Archive", agent.id)}
-                    onDelete={() => console.log("Delete", agent.id)}
+                    onEdit={onEdit ? () => onEdit(agent.id) : undefined}
+                    onDuplicate={onDuplicate ? () => onDuplicate(agent.id) : undefined}
+                    onActivate={agent.status !== "Active" && onActivate ? () => onActivate(agent.id) : undefined}
+                    onDeactivate={agent.status === "Active" && onDeactivate ? () => onDeactivate(agent.id) : undefined}
+                    onArchive={onArchive ? () => onArchive(agent.id) : undefined}
+                    onDelete={onDelete ? () => onDelete(agent.id) : undefined}
                   />
                 </td>
               </tr>
