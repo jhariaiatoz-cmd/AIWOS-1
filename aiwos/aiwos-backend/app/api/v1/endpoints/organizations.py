@@ -8,11 +8,20 @@ from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.organization import Organization
 from app.models.user import User
-from app.schemas.organization import OrganizationCreate, OrganizationResponse, OrganizationUpdate
+from app.schemas.organization import (
+    InvitationCreate,
+    InvitationResponse,
+    OrgMemberResponse,
+    OrganizationCreate,
+    OrganizationResponse,
+    OrganizationUpdate,
+)
+from app.services.invitation_service import create_invitation
 from app.services.organization_service import (
     create_organization,
     delete_organization,
     get_organization,
+    list_organization_members,
     list_organizations,
     update_organization,
 )
@@ -59,6 +68,15 @@ async def update_one(
     return await update_organization(db, org_id, body, user_id=current_user.id)
 
 
+@router.get("/{org_id}/members", response_model=List[OrgMemberResponse])
+async def list_members(
+    org_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list:
+    return await list_organization_members(db, org_id, user_id=current_user.id)
+
+
 @router.post("/{org_id}/provision", status_code=status.HTTP_204_NO_CONTENT)
 async def provision_one(
     org_id: uuid.UUID,
@@ -68,6 +86,16 @@ async def provision_one(
     # Membership check before provisioning
     await get_organization(db, org_id, user_id=current_user.id)
     await provision_organization(db, org_id)
+
+
+@router.post("/{org_id}/invite", response_model=InvitationResponse, status_code=status.HTTP_201_CREATED)
+async def invite_user(
+    org_id: uuid.UUID,
+    body: InvitationCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> object:
+    return await create_invitation(db, org_id, body, inviter=current_user)
 
 
 @router.delete("/{org_id}", status_code=status.HTTP_204_NO_CONTENT)

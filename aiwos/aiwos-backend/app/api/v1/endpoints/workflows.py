@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.workflow import Workflow
 from app.schemas.workflow import WorkflowCreate, WorkflowResponse, WorkflowUpdate
+from app.services import notification_service
 from app.services.workflow_service import (
     create_workflow,
     delete_workflow,
@@ -24,9 +25,23 @@ router = APIRouter(prefix="/workflows", tags=["workflows"])
 async def create(
     body: WorkflowCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> Workflow:
-    return await create_workflow(db, body)
+    workflow = await create_workflow(db, body)
+    try:
+        await notification_service.create_notification(
+            db,
+            organization_id=body.organization_id,
+            type="workflow_created",
+            title=f"Workflow created: {workflow.name}",
+            body=workflow.description,
+            entity_id=workflow.id,
+            entity_type="workflow",
+            user_id=current_user.id,
+        )
+    except Exception:
+        pass
+    return workflow
 
 
 @router.get("", response_model=List[WorkflowResponse])

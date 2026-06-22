@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.organization import Organization
 from app.models.organization_member import OrganizationMember
+from app.models.user import User
 from app.schemas.organization import OrganizationCreate, OrganizationUpdate
 
 
@@ -148,3 +149,30 @@ async def delete_organization(
     org = await get_organization(db, org_id, user_id=user_id)
     org.delete()
     await db.commit()
+
+
+async def list_organization_members(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    user_id: Optional[uuid.UUID] = None,
+) -> List[Dict[str, Any]]:
+    if user_id is not None:
+        await _require_membership(db, org_id, user_id)
+
+    result = await db.execute(
+        select(OrganizationMember, User)
+        .join(User, User.id == OrganizationMember.user_id)
+        .where(OrganizationMember.organization_id == org_id)
+        .order_by(OrganizationMember.joined_at.asc())
+    )
+    return [
+        {
+            "id": m.id,
+            "user_id": m.user_id,
+            "email": u.email,
+            "full_name": u.full_name,
+            "role": m.role,
+            "joined_at": m.joined_at,
+        }
+        for m, u in result.all()
+    ]

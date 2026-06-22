@@ -25,8 +25,8 @@ const NAV = [
     section: "Main",
     items: [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-      { label: "Agents", href: "/agents", icon: Bot, badge: 128 },
-      { label: "Tasks", href: "/tasks", icon: CheckSquare, badge: 342 },
+      { label: "Agents", href: "/agents", icon: Bot },
+      { label: "Tasks", href: "/tasks", icon: CheckSquare },
       { label: "Workflows", href: "/workflows", icon: GitBranch },
       { label: "Projects", href: "/projects", icon: Folder },
     ],
@@ -136,14 +136,6 @@ export function Sidebar({ isMobile, onNavClick }: SidebarProps = {}) {
                   )}
                   <Icon size={16} className="shrink-0" />
                   <span className="flex-1">{item.label}</span>
-                  {item.badge && (
-                    <span
-                      className="ml-auto rounded-full px-1.5 py-px text-[10px] font-semibold text-white"
-                      style={{ background: "var(--purple)" }}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
                 </Link>
               );
             })}

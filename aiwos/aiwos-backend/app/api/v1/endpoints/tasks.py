@@ -11,6 +11,7 @@ from app.models.agent import Agent
 from app.models.task import Task
 from app.models.user import User
 from app.schemas.task import TaskBulkFromProject, TaskBulkResponse, TaskCreate, TaskResponse, TaskUpdate
+from app.services import notification_service
 from app.services.task_service import (
     create_task,
     create_tasks_from_project,
@@ -29,7 +30,21 @@ async def create(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Task:
-    return await create_task(db, body, current_user.id)
+    task = await create_task(db, body, current_user.id)
+    try:
+        await notification_service.create_notification(
+            db,
+            organization_id=body.organization_id,
+            type="task_created",
+            title=f"Task created: {task.title}",
+            body=task.description,
+            entity_id=task.id,
+            entity_type="task",
+            user_id=current_user.id,
+        )
+    except Exception:
+        pass
+    return task
 
 
 @router.get("", response_model=List[TaskResponse])

@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
+    # Frontend URL for invite links
+    FRONTEND_URL: str = "http://localhost:3000"
+
+    # Invitation settings
+    INVITATION_EXPIRE_HOURS: int = 168  # 7 days
+
     # LLM provider settings
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None

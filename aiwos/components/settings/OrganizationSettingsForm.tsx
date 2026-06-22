@@ -1,18 +1,89 @@
 "use client";
 
-interface OrganizationSettingsFormProps {
-  organizationName: string;
-  workspaceUrl: string;
+import { useState, useEffect } from "react";
+import type { OrgApiResponse } from "@/lib/api/organizations";
+
+interface OrgFormData {
+  name: string;
+  slug: string;
   industry: string;
   timezone: string;
+  description: string;
+}
+
+interface OrganizationSettingsFormProps {
+  org: OrgApiResponse | null;
+  loading: boolean;
+  onSave: (data: Partial<OrgFormData>) => Promise<void>;
 }
 
 export function OrganizationSettingsForm({
-  organizationName,
-  workspaceUrl,
-  industry,
-  timezone,
+  org,
+  loading,
+  onSave,
 }: OrganizationSettingsFormProps) {
+  const [form, setForm] = useState<OrgFormData>({
+    name: "",
+    slug: "",
+    industry: "",
+    timezone: "",
+    description: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (org) {
+      setForm({
+        name: org.name ?? "",
+        slug: org.slug ?? "",
+        industry: org.industry ?? "",
+        timezone: org.timezone ?? "",
+        description: org.description ?? "",
+      });
+    }
+  }, [org]);
+
+  const handleChange =
+    (field: keyof OrgFormData) =>
+    (
+      e: React.ChangeEvent<
+        HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+      >
+    ) => {
+      setForm((prev) => ({ ...prev, [field]: e.target.value }));
+      setSaved(false);
+    };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(form);
+      setSaved(true);
+    } catch {
+      setError("Failed to save changes. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div
+        className="rounded-xl border p-5 text-sm text-muted-foreground"
+        style={{
+          background: "var(--card)",
+          borderColor: "var(--border-light)",
+        }}
+      >
+        Loading organization settings…
+      </div>
+    );
+  }
+
   return (
     <div
       className="rounded-xl border p-5"
@@ -30,14 +101,15 @@ export function OrganizationSettingsForm({
         </p>
       </div>
 
-      <form className="grid gap-4 md:grid-cols-2">
+      <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
         <label className="space-y-1.5">
           <span className="text-xs font-medium text-muted-foreground">
             Organization Name
           </span>
           <input
             type="text"
-            defaultValue={organizationName}
+            value={form.name}
+            onChange={handleChange("name")}
             className="h-10 w-full rounded-lg border px-3 text-sm outline-none transition-colors"
             style={{
               background: "var(--input-bg)",
@@ -53,7 +125,8 @@ export function OrganizationSettingsForm({
           </span>
           <input
             type="text"
-            defaultValue={workspaceUrl}
+            value={form.slug}
+            onChange={handleChange("slug")}
             className="h-10 w-full rounded-lg border px-3 text-sm outline-none transition-colors"
             style={{
               background: "var(--input-bg)",
@@ -68,7 +141,8 @@ export function OrganizationSettingsForm({
             Industry
           </span>
           <select
-            defaultValue={industry}
+            value={form.industry}
+            onChange={handleChange("industry")}
             className="h-10 w-full rounded-lg border px-3 text-sm outline-none transition-colors"
             style={{
               background: "var(--input-bg)",
@@ -76,6 +150,7 @@ export function OrganizationSettingsForm({
               color: "var(--foreground)",
             }}
           >
+            <option value="">Select industry</option>
             <option>Technology</option>
             <option>Finance</option>
             <option>Healthcare</option>
@@ -88,7 +163,8 @@ export function OrganizationSettingsForm({
             Timezone
           </span>
           <select
-            defaultValue={timezone}
+            value={form.timezone}
+            onChange={handleChange("timezone")}
             className="h-10 w-full rounded-lg border px-3 text-sm outline-none transition-colors"
             style={{
               background: "var(--input-bg)",
@@ -96,6 +172,7 @@ export function OrganizationSettingsForm({
               color: "var(--foreground)",
             }}
           >
+            <option value="">Select timezone</option>
             <option>UTC-08:00 Pacific Time</option>
             <option>UTC-05:00 Eastern Time</option>
             <option>UTC+00:00 Greenwich Mean Time</option>
@@ -108,7 +185,8 @@ export function OrganizationSettingsForm({
             Workspace Description
           </span>
           <textarea
-            defaultValue="AIWOS coordinates agents, projects, tasks, and knowledge across the organization."
+            value={form.description}
+            onChange={handleChange("description")}
             className="min-h-24 w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none transition-colors"
             style={{
               background: "var(--input-bg)",
@@ -118,14 +196,25 @@ export function OrganizationSettingsForm({
           />
         </label>
 
-        <div className="md:col-span-2">
+        <div className="flex items-center gap-3 md:col-span-2">
           <button
-            type="button"
-            className="rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-all hover:-translate-y-px"
+            type="submit"
+            disabled={saving}
+            className="rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-all hover:-translate-y-px disabled:opacity-60"
             style={{ background: "var(--purple)" }}
           >
-            Save Changes
+            {saving ? "Saving…" : "Save Changes"}
           </button>
+          {saved && (
+            <span className="text-xs" style={{ color: "var(--green)" }}>
+              Saved!
+            </span>
+          )}
+          {error && (
+            <span className="text-xs" style={{ color: "var(--red)" }}>
+              {error}
+            </span>
+          )}
         </div>
       </form>
     </div>

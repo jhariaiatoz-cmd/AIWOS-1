@@ -1,6 +1,6 @@
 import uuid
 from typing import TYPE_CHECKING, List
-from sqlalchemy import String, Index, text
+from sqlalchemy import String, Text, Index, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -8,6 +8,7 @@ from app.db.base import Base, TimestampMixin, SoftDeleteMixin
 
 if TYPE_CHECKING:
     from app.models.organization_member import OrganizationMember
+    from app.models.organization_invitation import OrganizationInvitation
     from app.models.department import Department
     from app.models.agent import Agent
     from app.models.project import Project
@@ -38,6 +39,9 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), nullable=False)
+    industry: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    timezone: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationships
     members: Mapped[List["OrganizationMember"]] = relationship(
@@ -112,6 +116,11 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     )
     provider_configs: Mapped[List["ProviderConfig"]] = relationship(
         "ProviderConfig",
+        back_populates="organization",
+        cascade="all, delete-orphan"
+    )
+    invitations: Mapped[List["OrganizationInvitation"]] = relationship(
+        "OrganizationInvitation",
         back_populates="organization",
         cascade="all, delete-orphan"
     )
