@@ -30,6 +30,7 @@ from app.models.task import Task
 from app.models.task_execution import TaskExecution
 from app.services.conversation_service import _build_system_prompt, _detect_persona_conduct
 from app.services.knowledge_retrieval_service import get_document_context
+from app.services.memory_service import build_memory_content, load_recent_memories, save_memory
 from app.services.llm_provider_service import (
     LLMResponse,
     ProviderErrorType,
@@ -169,6 +170,13 @@ class AgentExecutionEngine:
             task.project_id, task.phase or ""
         )
 
+        # 4a. Load agent memory context
+        memory_context = await load_recent_memories(
+            self.db,
+            agent_id=agent.id,
+            project_id=task.project_id,
+        )
+
         # 5. Build prompts
         system_prompt = _build_system_prompt(agent)
         user_prompt = self._build_user_prompt(
@@ -176,6 +184,7 @@ class AgentExecutionEngine:
             project,
             knowledge_context=knowledge_context,
             prior_phase_context=prior_phase_context,
+            memory_context=memory_context,
         )
         execution.input_data = {"system_prompt": system_prompt, "user_prompt": user_prompt}
 
@@ -283,6 +292,15 @@ class AgentExecutionEngine:
 
         task.status = "Done"
         await self.db.commit()
+
+        # 8a. Persist memory of this completed task
+        await save_memory(
+            self.db,
+            agent_id=agent.id,
+            organization_id=execution.organization_id,
+            project_id=task.project_id,
+            content=build_memory_content(task.title, task.phase, llm_response.content),
+        )
 
         # 8. Update execution logs
         await self._insert_execution_log(
@@ -440,6 +458,7 @@ class AgentExecutionEngine:
         *,
         knowledge_context: str = "",
         prior_phase_context: str = "",
+        memory_context: str = "",
     ) -> str:
         lines: list[str] = [
             "You are executing a task and must produce a professional deliverable as your output.",
@@ -460,6 +479,14 @@ class AgentExecutionEngine:
             lines += [
                 "",
                 f"**Deliverable Requirement ({task.phase} phase):** {phase_guidance}",
+            ]
+
+        if memory_context:
+            lines += [
+                "",
+                memory_context,
+                "",
+                "Use the above memory as background context on work you have previously done.",
             ]
 
         if knowledge_context:

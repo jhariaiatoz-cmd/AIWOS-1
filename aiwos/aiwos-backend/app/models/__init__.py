@@ -21,6 +21,9 @@ from app.models.integration import Integration
 from app.models.task_execution import TaskExecution
 from app.models.provider_config import ProviderConfig
 from app.models.notification import Notification
+from app.models.workflow_execution import WorkflowExecution
+from app.models.agent_handoff import AgentHandoff
+from app.models.agent_memory import AgentMemory
 
 __all__ = [
     "Base",
@@ -46,4 +49,7 @@ __all__ = [
     "TaskExecution",
     "ProviderConfig",
     "Notification",
+    "WorkflowExecution",
+    "AgentHandoff",
+    "AgentMemory",
 ]

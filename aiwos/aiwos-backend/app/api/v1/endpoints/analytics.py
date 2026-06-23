@@ -17,15 +17,20 @@ from app.models.user import User
 from app.models.workflow import Workflow
 from app.schemas.analytics import (
     ActivityItem,
+    AgentUtilizationStat,
     AnalyticsMetricsResponse,
     DashboardResponse,
     DashboardStats,
     DepartmentStat,
     DepartmentTaskStat,
+    ExecutionMetricsResponse,
+    ProviderUsageStat,
     TopAgentStat,
     TrendDataPoint,
     WeeklyCompletion,
+    WorkflowExecutionMetrics,
 )
+from app.services.analytics_service import AnalyticsService
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -888,4 +893,28 @@ async def analytics_metrics(
         response_time_change_pct=response_time_change_pct,
         task_completion_trend=task_completion_trend,
         tasks_by_department=tasks_by_department,
+    )
+
+
+@router.get("/execution-metrics", response_model=ExecutionMetricsResponse)
+async def execution_metrics(
+    organization_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> ExecutionMetricsResponse:
+    service = AnalyticsService(db)
+    exec_m = await service.get_execution_metrics(organization_id)
+    wf_m = await service.get_workflow_metrics(organization_id)
+    providers = await service.get_provider_usage(organization_id)
+    agents = await service.get_agent_utilization(organization_id)
+    return ExecutionMetricsResponse(
+        total_executions=exec_m["total"],
+        successful_executions=exec_m["successful"],
+        failed_executions=exec_m["failed"],
+        retry_count=exec_m["retried"],
+        avg_duration_ms=exec_m["avg_duration_ms"],
+        success_rate=exec_m["success_rate"],
+        workflow_metrics=WorkflowExecutionMetrics(**wf_m),
+        provider_usage=[ProviderUsageStat(**p) for p in providers],
+        agent_utilization=[AgentUtilizationStat(**a) for a in agents],
     )

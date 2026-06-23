@@ -3,6 +3,45 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
+# ── Execution Metrics (new endpoint) ─────────────────────────────────────────
+
+class WorkflowExecutionMetrics(BaseModel):
+    total_executions: int
+    completed: int
+    failed: int
+    running: int
+    success_rate: float
+    avg_duration_seconds: float
+
+
+class ProviderUsageStat(BaseModel):
+    provider: str
+    count: int
+    percentage: float
+
+
+class AgentUtilizationStat(BaseModel):
+    agent_id: str
+    agent_name: str
+    total_executions: int
+    successful: int
+    failed: int
+    success_rate: float
+    avg_duration_ms: float
+
+
+class ExecutionMetricsResponse(BaseModel):
+    total_executions: int
+    successful_executions: int
+    failed_executions: int
+    retry_count: int
+    avg_duration_ms: float
+    success_rate: float
+    workflow_metrics: WorkflowExecutionMetrics
+    provider_usage: list[ProviderUsageStat]
+    agent_utilization: list[AgentUtilizationStat]
+
+
 # ── Analytics Metrics (dedicated analytics page) ──────────────────────────────
 
 class TrendDataPoint(BaseModel):

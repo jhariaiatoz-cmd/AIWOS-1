@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -83,5 +83,39 @@ class WorkflowResponse(BaseModel):
     steps: list[WorkflowStepResponse]
     created_at: datetime
     updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AgentHandoffResponse(BaseModel):
+    id: uuid.UUID
+    workflow_execution_id: uuid.UUID
+    source_agent_id: Optional[uuid.UUID]
+    target_agent_id: Optional[uuid.UUID]
+    source_execution_id: Optional[uuid.UUID]
+    target_execution_id: Optional[uuid.UUID]
+    handoff_content: str
+    status: str
+    source_step_order: int
+    target_step_order: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class WorkflowExecutionResponse(BaseModel):
+    id: uuid.UUID
+    workflow_id: uuid.UUID
+    organization_id: uuid.UUID
+    status: str
+    current_step_order: Optional[int]
+    completed_steps: Optional[list[Any]]
+    failed_steps: Optional[list[Any]]
+    step_outputs: Optional[dict[str, Any]]
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+    error_message: Optional[str]
+    created_at: datetime
+    handoffs: Optional[list[AgentHandoffResponse]] = None
 
     model_config = {"from_attributes": True}

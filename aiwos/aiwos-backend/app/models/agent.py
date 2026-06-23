@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from app.models.agent_metric import AgentMetric
     from app.models.execution_log import ExecutionLog
     from app.models.task_execution import TaskExecution
+    from app.models.agent_memory import AgentMemory
 
 
 class Agent(Base, TimestampMixin, SoftDeleteMixin):
@@ -105,4 +106,9 @@ class Agent(Base, TimestampMixin, SoftDeleteMixin):
         "TaskExecution",
         back_populates="agent",
         cascade="all, delete-orphan"
+    )
+    memories: Mapped[List["AgentMemory"]] = relationship(
+        "AgentMemory",
+        back_populates="agent",
+        cascade="all, delete-orphan",
     )

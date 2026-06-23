@@ -68,6 +68,13 @@ export const analyticsApi = {
         params: { organization_id, time_range },
       })
       .then((r) => r.data),
+
+  executionMetrics: (organization_id: string) =>
+    apiClient
+      .get<ExecutionMetricsResponse>("/analytics/execution-metrics", {
+        params: { organization_id },
+      })
+      .then((r) => r.data),
 };
 
 // ── Analytics Metrics types ───────────────────────────────────────────────────
@@ -82,6 +89,45 @@ export type DepartmentTaskStat = {
   department: string;
   tasks: number;
   percentage: number;
+};
+
+// ── Execution Metrics ─────────────────────────────────────────────────────────
+
+export type WorkflowExecutionMetrics = {
+  total_executions: number;
+  completed: number;
+  failed: number;
+  running: number;
+  success_rate: number;
+  avg_duration_seconds: number;
+};
+
+export type ProviderUsageStat = {
+  provider: string;
+  count: number;
+  percentage: number;
+};
+
+export type AgentUtilizationStat = {
+  agent_id: string;
+  agent_name: string;
+  total_executions: number;
+  successful: number;
+  failed: number;
+  success_rate: number;
+  avg_duration_ms: number;
+};
+
+export type ExecutionMetricsResponse = {
+  total_executions: number;
+  successful_executions: number;
+  failed_executions: number;
+  retry_count: number;
+  avg_duration_ms: number;
+  success_rate: number;
+  workflow_metrics: WorkflowExecutionMetrics;
+  provider_usage: ProviderUsageStat[];
+  agent_utilization: AgentUtilizationStat[];
 };
 
 export type AnalyticsMetricsResponse = {
