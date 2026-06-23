@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -15,6 +15,20 @@ export function CommandHero() {
   const [command, setCommand] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const autoResize = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const newHeight = Math.min(el.scrollHeight, 200);
+    el.style.height = `${newHeight}px`;
+    el.style.overflowY = el.scrollHeight > 200 ? "auto" : "hidden";
+  }, []);
+
+  useEffect(() => {
+    autoResize();
+  }, [command, autoResize]);
   const router = useRouter();
   const { user, currentOrgId } = useAuthStore();
   const setPendingConversationId = useWorkspaceStore(
@@ -87,19 +101,29 @@ export function CommandHero() {
 
         {/* Command input */}
         <div className="relative mx-auto mb-2 max-w-[640px]">
-          <input
+          <textarea
+            ref={textareaRef}
+            rows={1}
             value={command}
             onChange={(e) => {
               setCommand(e.target.value);
               if (error) setError(null);
             }}
-            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit();
+              }
+            }}
             disabled={createConversation.isPending}
-            className="w-full rounded-2xl border px-4 py-3.5 pr-14 text-sm outline-none transition-all focus:shadow-[0_0_0_3px_var(--accent-glow)] focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-2xl border px-4 py-3.5 pr-14 text-sm outline-none transition-all focus:shadow-[0_0_0_3px_var(--accent-glow)] focus:border-primary disabled:cursor-not-allowed disabled:opacity-60 resize-none"
             style={{
               background: "var(--card)",
               borderColor: error ? "var(--destructive)" : "var(--border)",
               color: "var(--foreground)",
+              minHeight: "40px",
+              maxHeight: "200px",
+              overflowY: "hidden",
             }}
             placeholder="What would you like your workforce to do today?"
             aria-label="Workforce command"
@@ -108,7 +132,7 @@ export function CommandHero() {
             type="button"
             onClick={handleSubmit}
             disabled={!command.trim() || createConversation.isPending}
-            className="absolute right-2.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-white transition-opacity disabled:opacity-40"
+            className="absolute right-2.5 bottom-2.5 flex h-9 w-9 items-center justify-center rounded-lg text-white transition-opacity disabled:opacity-40"
             style={{ background: "var(--purple)" }}
             aria-label="Send command"
           >

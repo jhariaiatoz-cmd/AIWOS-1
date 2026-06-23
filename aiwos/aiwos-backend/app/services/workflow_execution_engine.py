@@ -64,6 +64,7 @@ class _WorkflowStepEngine(AgentExecutionEngine):
         knowledge_context: str = "",
         prior_phase_context: str = "",
         memory_context: str = "",
+        comm_context: str = "",
     ) -> str:
         base = super()._build_user_prompt(
             task,
@@ -71,6 +72,7 @@ class _WorkflowStepEngine(AgentExecutionEngine):
             knowledge_context=knowledge_context,
             prior_phase_context=prior_phase_context,
             memory_context=memory_context,
+            comm_context=comm_context,
         )
         if not self._prior_step_output:
             return base
