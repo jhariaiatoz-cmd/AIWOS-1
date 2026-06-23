@@ -75,6 +75,44 @@ _DOMAINS = [
         "role": {"devops", "operations", "infrastructure", "sre", "reliability"},
     },
 
+    # Product Manager  →  charter, vision, roadmap, requirements, product strategy
+    {
+        "task": {
+            "charter", "vision", "roadmap", "product", "strategy", "backlog",
+            "prioritization", "feature", "epics", "user story", "stories",
+            "acceptance", "kpi", "okr", "launch", "go-to-market",
+        },
+        "role": {"product", "strategy", "manager"},
+    },
+
+    # Project Manager  →  WBS, schedule, resource, milestones, project plan
+    {
+        "task": {
+            "wbs", "schedule", "resource", "milestone", "gantt", "project",
+            "planning", "kickoff", "stakeholder", "risk", "scope", "timeline",
+            "delivery", "dependency", "project plan", "status report",
+        },
+        "role": {"program", "delivery", "project", "coordinator", "pmo"},
+    },
+
+    # AI Solution Architect  →  architecture, system design, tech stack
+    {
+        "task": {
+            "architecture", "system", "design", "solution", "stack", "technical",
+            "scalability", "patterns", "microservices", "integration", "blueprint",
+        },
+        "role": {"architect", "systems", "solution", "ai", "technical"},
+    },
+
+    # Cybersecurity Specialist  →  security, compliance, vulnerability
+    {
+        "task": {
+            "security", "penetration", "vulnerability", "compliance", "threat",
+            "audit", "firewall", "encryption", "access", "identity", "siem",
+        },
+        "role": {"security", "operations", "cybersecurity", "compliance"},
+    },
+
     # HR Manager  →  recruitment, hiring, onboarding
     {
         "task": {

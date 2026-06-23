@@ -17,31 +17,74 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from app.models.agent import Agent
 
-# Deterministic phase → specialist role mapping
+# Deterministic phase → specialist role/name mapping
 PHASE_ROLE_MAP: Dict[str, str] = {
     "Research": "Research Analyst",
     "Design": "UI/UX Designer",
-    "Development": "Full Stack Engineer",
+    "Development": "Senior Full Stack Engineer",
     "Testing": "QA Engineer",
     "Deployment": "DevOps Engineer",
+    "Planning": "Project Manager",
+    "Initiation": "Product Manager",
+    "Architecture": "AI Solution Architect",
+    "Security": "Cybersecurity Specialist",
+    "Frontend": "UI/UX Designer",
+    "Backend": "Backend Engineer",
+    "QA": "QA Engineer",
 }
+
+# Task title keyword → specialist name mapping (matched when phase/role don't resolve)
+_TASK_KEYWORD_ROLE_MAP: List[tuple] = [
+    # Project management / planning tasks
+    ({"charter", "project charter"}, "Product Manager"),
+    ({"wbs", "work breakdown", "work breakdown structure"}, "Project Manager"),
+    ({"resource assignment", "resource plan", "resource allocation"}, "Project Manager"),
+    ({"schedule", "schedule development", "project schedule", "timeline"}, "Project Manager"),
+    ({"stakeholder", "stakeholder register", "stakeholder analysis"}, "Project Manager"),
+    ({"risk register", "risk management", "risk assessment"}, "Project Manager"),
+    ({"project plan", "project planning", "kick-off", "kickoff"}, "Project Manager"),
+    # Architecture tasks
+    ({"architecture", "system design", "solution design", "tech stack", "technical design"}, "AI Solution Architect"),
+    # Security tasks
+    ({"security", "penetration", "vulnerability", "compliance", "audit", "threat"}, "Cybersecurity Specialist"),
+    # Frontend tasks
+    ({"frontend", "front-end", "ui", "ux", "wireframe", "mockup", "prototype"}, "UI/UX Designer"),
+    # Backend tasks
+    ({"backend", "back-end", "api", "database", "server", "microservice"}, "Backend Engineer"),
+    # QA tasks
+    ({"testing", "qa", "quality assurance", "test plan", "test cases"}, "QA Engineer"),
+]
 
 
 def _find_agent_by_role(target_role: str, agents: "List[Agent]") -> "Optional[uuid.UUID]":
-    """Return the first agent whose role contains the target role keywords."""
+    """Return the first agent whose name or role contains the target role keywords."""
     target_lower = target_role.lower()
-    # Exact or substring match first
+    # Search agent.name first (names like "Product Manager" are most descriptive)
+    for agent in agents:
+        if target_lower in (agent.name or "").lower():
+            return agent.id
+    # Then search agent.role
     for agent in agents:
         if target_lower in (agent.role or "").lower():
             return agent.id
-    # Partial keyword match: require ALL significant words to match (>= 2 chars)
-    # to prevent generic words like "engineer" from cross-matching roles.
+    # Partial keyword match on name + role combined: require ALL significant words
     keywords = [w for w in target_lower.split() if len(w) >= 2]
     if keywords:
         for agent in agents:
-            role_lower = (agent.role or "").lower()
-            if all(kw in role_lower for kw in keywords):
+            combined = f"{agent.name or ''} {agent.role or ''}".lower()
+            if all(kw in combined for kw in keywords):
                 return agent.id
+    return None
+
+
+def _find_agent_by_task_title(title: str, agents: "List[Agent]") -> "Optional[uuid.UUID]":
+    """Match task title keywords to a specialist role, then find the agent."""
+    title_lower = title.lower()
+    for keywords, role_name in _TASK_KEYWORD_ROLE_MAP:
+        if any(kw in title_lower for kw in keywords):
+            agent_id = _find_agent_by_role(role_name, agents)
+            if agent_id is not None:
+                return agent_id
     return None
 
 
@@ -81,6 +124,8 @@ async def create_tasks_from_project(
             fallback_used = False
             if suggested_role and available_agents:
                 assigned = _find_agent_by_role(suggested_role, available_agents)
+            if assigned is None and available_agents:
+                assigned = _find_agent_by_task_title(title, available_agents)
             if assigned is None:
                 assigned = assign_task(title, description, available_agents)
             if assigned is None:

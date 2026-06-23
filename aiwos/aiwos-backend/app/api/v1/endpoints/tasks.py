@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import List
 
@@ -8,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.agent import Agent
+from app.models.project import Project
 from app.models.task import Task
 from app.models.user import User
 from app.schemas.task import TaskBulkFromProject, TaskBulkResponse, TaskCreate, TaskResponse, TaskUpdate
+from app.schemas.workflow import WorkflowCreate, WorkflowStepCreate
 from app.services import notification_service
 from app.services.task_service import (
     create_task,
@@ -20,6 +23,9 @@ from app.services.task_service import (
     list_tasks,
     update_task,
 )
+from app.services.workflow_service import create_workflow
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -83,7 +89,45 @@ async def create_from_project(
         agents=agents,
         phase_tasks=[pt.model_dump() for pt in body.phase_tasks] if body.phase_tasks else None,
     )
+
+    if created:
+        await _create_project_workflow(db, body, created)
+
     return {"created": created, "count": len(created)}
+
+
+async def _create_project_workflow(db: AsyncSession, body: TaskBulkFromProject, tasks: List[Task]) -> None:
+    """Auto-create a workflow with one step per task after bulk task creation."""
+    project_result = await db.execute(
+        select(Project).where(Project.id == body.project_id)
+    )
+    project = project_result.scalar_one_or_none()
+    project_name = project.name if project else str(body.project_id)
+
+    steps = [
+        WorkflowStepCreate(
+            name=task.title[:255],
+            node_id=f"step-{i}",
+            step_order=i,
+            agent_id=task.assigned_to,
+            config={"task_id": str(task.id), "phase": task.phase},
+        )
+        for i, task in enumerate(tasks)
+    ]
+
+    workflow_body = WorkflowCreate(
+        organization_id=body.organization_id,
+        name=f"{project_name} Workflow",
+        description=f"Auto-generated workflow for project: {project_name}",
+        graph_definition={"nodes": [], "edges": []},
+        status="Draft",
+        steps=steps,
+    )
+
+    try:
+        await create_workflow(db, workflow_body)
+    except Exception:
+        logger.exception("Failed to auto-create workflow for project %s", body.project_id)
 
 
 @router.get("/{task_id}", response_model=TaskResponse)
