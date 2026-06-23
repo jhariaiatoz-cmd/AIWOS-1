@@ -181,7 +181,11 @@ function detectProjectRecommendation(
 
   console.debug("[ProjectRec] phases count:", phases.length, "| tasks count:", phases.length);
 
-  if (phases.length < 2) return null;
+  // Fall back to the previous behavior: count all bullets anywhere in the content.
+  // This preserves the card for responses where the plan section uses prose or numbered
+  // lists that _extractPhaseTasks cannot parse (e.g. "1. Research — do X" style).
+  const allBullets = content.match(/^[-*]\s+\S[^\n]*/gm) ?? [];
+  if (phases.length < 2 && allBullets.length < 3) return null;
 
   // Project name: first ## heading that isn't a standard section name
   let name = "New Project";
@@ -204,8 +208,10 @@ function detectProjectRecommendation(
     if (!seenPhases.has(pt.phase)) { seenPhases.add(pt.phase); milestones.push(`${pt.phase} Phase`); }
   }
 
-  // Flat tasks list for backward compat (e.g. legacy CreateProjectDialog path)
-  const tasks = phases.map((pt) => pt.title);
+  // Flat tasks list: phase titles when available, otherwise legacy bullets
+  const tasks = phases.length > 0
+    ? phases.map((pt) => pt.title)
+    : allBullets.slice(0, 6).map((item) => item.replace(/^[-*]\s+/, "").replace(/\*\*/g, "").trim());
 
   const priority = _extractPriority(content, userMessage);
   const complexity = _extractComplexity(content, phases.length);
