@@ -26,7 +26,7 @@ function toDisplayWorkflow(w: WorkflowApiResponse): Workflow {
     name: w.name,
     description: w.description ?? "",
     triggerEvent: "Manual",
-    assignedAgents: w.steps.slice(0, 3).map((s) => ({
+    assignedAgents: [...w.steps].sort((a, b) => a.step_order - b.step_order).map((s) => ({
       id: s.id,
       name: s.name,
       initials: s.name.slice(0, 2).toUpperCase(),

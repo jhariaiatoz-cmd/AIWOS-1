@@ -45,6 +45,7 @@ function StatusBadge({ status }: { status: "Active" | "Inactive" | "Paused" }) {
 
 type ExecResult = {
   status: string;
+  current_step_order: number | null;
   completed_steps: unknown[] | null;
   failed_steps: unknown[] | null;
   error_message: string | null;
@@ -75,6 +76,7 @@ function WorkflowDetailSheet({
     if (polledExec) {
       setExecResult({
         status: polledExec.status,
+        current_step_order: polledExec.current_step_order,
         completed_steps: polledExec.completed_steps,
         failed_steps: polledExec.failed_steps,
         error_message: polledExec.error_message,
@@ -88,6 +90,7 @@ function WorkflowDetailSheet({
       setExecId(data.id);
       setExecResult({
         status: data.status,
+        current_step_order: data.current_step_order,
         completed_steps: data.completed_steps,
         failed_steps: data.failed_steps,
         error_message: data.error_message,
@@ -201,6 +204,15 @@ function WorkflowDetailSheet({
                   {execResult.status === "completed" ? "Workflow completed" : execResult.status === "failed" ? "Workflow failed" : "Running…"}
                 </span>
               </div>
+              {execResult.status === "running" && execResult.current_step_order != null && (
+                <p className="text-xs text-cyan-300 mb-1">
+                  Executing step {execResult.current_step_order + 1}
+                  {workflow.assignedAgents.length > 0 ? ` of ${workflow.assignedAgents.length}` : ""}
+                  {workflow.assignedAgents[execResult.current_step_order]
+                    ? ` — ${workflow.assignedAgents[execResult.current_step_order].name}`
+                    : ""}
+                </p>
+              )}
               {execResult.completed_steps && execResult.completed_steps.length > 0 && (
                 <p className="text-xs text-muted-foreground">
                   {execResult.completed_steps.length} step{execResult.completed_steps.length !== 1 ? "s" : ""} completed
