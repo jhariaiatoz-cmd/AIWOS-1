@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus, Loader2 } from "lucide-react";
 import { workflowsData } from "@/lib/data/workflows";
 import { workflowApi, type WorkflowApiResponse } from "@/lib/api/workflows";
+import { analyticsApi } from "@/lib/api/analytics";
 import { useAuthStore } from "@/lib/store/auth";
 import { WorkflowSearchBar } from "@/components/workflows/WorkflowSearchBar";
 import { WorkflowFilterBar } from "@/components/workflows/WorkflowFilterBar";
@@ -55,6 +56,13 @@ export default function WorkflowsPage() {
     enabled: !isGuest && !!currentOrgId,
   });
 
+  const { data: execMetrics } = useQuery({
+    queryKey: ["execution-metrics", currentOrgId],
+    queryFn: () => analyticsApi.executionMetrics(currentOrgId!),
+    enabled: !isGuest && !!currentOrgId,
+    staleTime: 30_000,
+  });
+
   const rawWorkflows: Workflow[] = isGuest
     ? workflowsData
     : (apiWorkflows ?? []).map(toDisplayWorkflow);
@@ -80,17 +88,13 @@ export default function WorkflowsPage() {
 
   const totalWorkflows = rawWorkflows.length;
   const activeWorkflows = rawWorkflows.filter((w) => w.status === "Active").length;
-  const avgSuccessRate =
-    rawWorkflows.length > 0
-      ? Math.round(
-          rawWorkflows.reduce((sum, w) => sum + w.successRate, 0) /
-            rawWorkflows.length
-        )
-      : 0;
-  const totalExecutions = rawWorkflows.reduce(
-    (sum, w) => sum + w.executionCount,
-    0
-  );
+  // Real execution metrics come from the analytics endpoint; fall back to 0 while loading.
+  const avgSuccessRate = execMetrics
+    ? Math.round(execMetrics.workflow_metrics.success_rate)
+    : 0;
+  const totalExecutions = execMetrics
+    ? execMetrics.workflow_metrics.total_executions
+    : 0;
 
   return (
     <div className="flex flex-col gap-6">

@@ -414,7 +414,21 @@ export function ExecutionViewer({ executionId, taskTitle, onClose }: ExecutionVi
             </div>
           )}
 
-          {!isPending && !error && !content && execution?.status !== "failed" && (
+          {!isPending && !error &&
+            (execution?.status === "pending" || execution?.status === "running") && (
+            <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
+              <Loader2 size={24} className="animate-spin text-[var(--cyan)]" />
+              <span className="text-sm">
+                {execution.status === "pending" ? "Queued — waiting to start…" : "Agent is working on this task…"}
+              </span>
+              <span className="text-xs opacity-60">Checking for updates every 3 s</span>
+            </div>
+          )}
+
+          {!isPending && !error && !content &&
+            execution?.status !== "failed" &&
+            execution?.status !== "pending" &&
+            execution?.status !== "running" && (
             <div className="py-16 text-center text-sm text-muted-foreground">
               No output available for this execution.
             </div>

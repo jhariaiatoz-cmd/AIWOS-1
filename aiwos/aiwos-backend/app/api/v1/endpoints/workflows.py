@@ -1,15 +1,18 @@
+import logging
 import uuid
+from datetime import datetime, timezone
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.db.session import get_db
+from app.db.session import AsyncSessionLocal, get_db
 from app.models.agent_handoff import AgentHandoff
 from app.models.user import User
 from app.models.workflow import Workflow
+from app.models.workflow_execution import WorkflowExecution
 from app.schemas.workflow import (
     AgentHandoffResponse,
     WorkflowCreate,
@@ -27,7 +30,54 @@ from app.services.workflow_service import (
     update_workflow,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/workflows", tags=["workflows"])
+
+
+async def _run_workflow_bg(
+    workflow_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    wf_exec_id: uuid.UUID,
+) -> None:
+    """Run a workflow execution in the background using its own DB session."""
+    async with AsyncSessionLocal() as db:
+        try:
+            logger.info(
+                "Background workflow %s | execution_id=%s | starting",
+                workflow_id, wf_exec_id,
+            )
+            engine = WorkflowExecutionEngine(db)
+            await engine.run(workflow_id, organization_id, wf_exec_id=wf_exec_id)
+        except Exception as exc:
+            logger.exception(
+                "Background workflow %s | execution_id=%s | unhandled error: %s",
+                workflow_id, wf_exec_id, exc,
+            )
+            # Last-resort: mark workflow execution as failed so it never stays "running".
+            try:
+                async with AsyncSessionLocal() as recovery_db:
+                    result = await recovery_db.execute(
+                        select(WorkflowExecution).where(
+                            WorkflowExecution.id == wf_exec_id,
+                            WorkflowExecution.deleted_at.is_(None),
+                        )
+                    )
+                    wf_exec = result.scalar_one_or_none()
+                    if wf_exec and wf_exec.status not in ("completed", "failed"):
+                        wf_exec.status = "failed"
+                        wf_exec.error_message = f"Unexpected error: {exc}"
+                        wf_exec.completed_at = datetime.now(timezone.utc)
+                        await recovery_db.commit()
+                        logger.info(
+                            "Background workflow %s | execution_id=%s | marked failed after exception",
+                            workflow_id, wf_exec_id,
+                        )
+            except Exception:
+                logger.exception(
+                    "Background workflow %s | execution_id=%s | recovery commit failed",
+                    workflow_id, wf_exec_id,
+                )
 
 
 @router.post("", response_model=WorkflowResponse, status_code=status.HTTP_201_CREATED)
@@ -99,20 +149,71 @@ async def delete_one(
 )
 async def execute_workflow(
     workflow_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> WorkflowExecutionResponse:
     """
-    Run all steps of a workflow sequentially.
+    Dispatch all steps of a workflow sequentially as a background task.
+    Returns a WorkflowExecution with status="running" immediately.
+    Poll GET /{workflow_id}/executions/{execution_id} for status updates.
     Each WorkflowStep must have config["task_id"] set to an existing Task UUID.
-    Execution stops immediately on any step failure.
     """
     workflow = await get_workflow(db, workflow_id)
-    try:
-        engine = WorkflowExecutionEngine(db)
-        wf_exec = await engine.run(workflow_id, workflow.organization_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    # Create the execution record upfront so the client gets an ID to poll.
+    wf_exec = WorkflowExecution(
+        id=uuid.uuid4(),
+        workflow_id=workflow_id,
+        organization_id=workflow.organization_id,
+        status="running",
+        completed_steps=[],
+        failed_steps=[],
+        step_outputs={},
+        started_at=datetime.now(timezone.utc),
+    )
+    db.add(wf_exec)
+    await db.commit()
+    await db.refresh(wf_exec)
+
+    logger.info(
+        "Workflow %s | execution_id=%s | dispatched to background",
+        workflow_id, wf_exec.id,
+    )
+
+    background_tasks.add_task(
+        _run_workflow_bg,
+        workflow_id,
+        workflow.organization_id,
+        wf_exec.id,
+    )
+    return wf_exec
+
+
+@router.get(
+    "/{workflow_id}/executions/{execution_id}",
+    response_model=WorkflowExecutionResponse,
+)
+async def get_workflow_execution_status(
+    workflow_id: uuid.UUID,
+    execution_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> WorkflowExecution:
+    """Poll the status of a workflow execution."""
+    result = await db.execute(
+        select(WorkflowExecution).where(
+            WorkflowExecution.id == execution_id,
+            WorkflowExecution.workflow_id == workflow_id,
+            WorkflowExecution.deleted_at.is_(None),
+        )
+    )
+    wf_exec = result.scalar_one_or_none()
+    if wf_exec is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workflow execution not found.",
+        )
     return wf_exec
 
 

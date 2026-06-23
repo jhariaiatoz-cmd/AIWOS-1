@@ -33,7 +33,8 @@ PHASE_ROLE_MAP: Dict[str, str] = {
     "QA": "QA Engineer",
 }
 
-# Task title keyword → specialist name mapping (matched when phase/role don't resolve)
+# Task title keyword → specialist name mapping (matched when phase/role don't resolve).
+# ORDER MATTERS: first matching entry wins, so more-specific entries come first.
 _TASK_KEYWORD_ROLE_MAP: List[tuple] = [
     # Project management / planning tasks
     ({"charter", "project charter"}, "Product Manager"),
@@ -43,14 +44,53 @@ _TASK_KEYWORD_ROLE_MAP: List[tuple] = [
     ({"stakeholder", "stakeholder register", "stakeholder analysis"}, "Project Manager"),
     ({"risk register", "risk management", "risk assessment"}, "Project Manager"),
     ({"project plan", "project planning", "kick-off", "kickoff"}, "Project Manager"),
-    # Architecture tasks
-    ({"architecture", "system design", "solution design", "tech stack", "technical design"}, "AI Solution Architect"),
-    # Security tasks
-    ({"security", "penetration", "vulnerability", "compliance", "audit", "threat"}, "Cybersecurity Specialist"),
-    # Frontend tasks
-    ({"frontend", "front-end", "ui", "ux", "wireframe", "mockup", "prototype"}, "UI/UX Designer"),
-    # Backend tasks
-    ({"backend", "back-end", "api", "database", "server", "microservice"}, "Backend Engineer"),
+    # Research tasks — must come BEFORE security/compliance so that
+    # "Compliance Research" maps to Research Analyst, not Cybersecurity Specialist.
+    (
+        {
+            "research", "market research", "competitive research",
+            "compliance research", "regulatory research", "requirements research",
+            "user research", "discovery", "benchmarking", "feasibility",
+        },
+        "Research Analyst",
+    ),
+    # Architecture / solution design tasks
+    (
+        {
+            "architecture", "architecture design", "system design",
+            "solution design", "tech stack", "technical design",
+        },
+        "AI Solution Architect",
+    ),
+    # Security tasks (compliance without "research" context stays here)
+    (
+        {
+            "security", "penetration", "vulnerability", "compliance audit",
+            "security audit", "threat", "penetration testing",
+        },
+        "Cybersecurity Specialist",
+    ),
+    # UI / UX / design tasks
+    (
+        {
+            "ui design", "ux design", "ui/ux", "wireframe", "mockup",
+            "prototype", "frontend design", "interface design",
+            "user interface", "user experience",
+        },
+        "UI/UX Designer",
+    ),
+    # Frontend development tasks
+    ({"frontend", "front-end", "react", "nextjs", "component"}, "Senior Full Stack Engineer"),
+    # Backend / development tasks
+    # Maps to "Senior Full Stack Engineer" to match PHASE_ROLE_MAP["Development"].
+    (
+        {
+            "backend", "back-end", "api development", "backend development",
+            "database", "server", "microservice", "development",
+            "implementation", "software development",
+        },
+        "Senior Full Stack Engineer",
+    ),
     # QA tasks
     ({"testing", "qa", "quality assurance", "test plan", "test cases"}, "QA Engineer"),
 ]

@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -9,8 +10,6 @@ from app.models.agent import Agent
 from app.models.task import Task
 from app.models.task_execution import TaskExecution
 from app.services.agent_execution_engine import AgentExecutionEngine
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +47,20 @@ async def run_execution(db: AsyncSession, execution_id: uuid.UUID) -> TaskExecut
             "Only 'pending' executions can be started."
         )
 
-    task = await _get_task(db, execution.task_id)
-    agent = await _resolve_agent(db, execution, task)
+    # Pre-flight: resolve task and agent before entering the engine.
+    # Failures here mark the execution as failed so it never stays "pending".
+    try:
+        task = await _get_task(db, execution.task_id)
+        agent = await _resolve_agent(db, execution, task)
+    except ValueError as exc:
+        logger.error(
+            "Execution %s: pre-flight failed — %s", execution_id, exc
+        )
+        execution.status = "failed"
+        execution.error_message = str(exc)
+        execution.completed_at = datetime.now(timezone.utc)
+        await db.commit()
+        return execution
 
     engine = AgentExecutionEngine(db)
     return await engine.run(agent.id, task.id, execution_id)

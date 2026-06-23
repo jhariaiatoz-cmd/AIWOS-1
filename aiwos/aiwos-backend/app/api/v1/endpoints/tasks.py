@@ -120,7 +120,7 @@ async def _create_project_workflow(db: AsyncSession, body: TaskBulkFromProject, 
         name=f"{project_name} Workflow",
         description=f"Auto-generated workflow for project: {project_name}",
         graph_definition={"nodes": [], "edges": []},
-        status="Draft",
+        status="Active",
         steps=steps,
     )
 

@@ -47,6 +47,8 @@ _DEFAULT_MODEL = "gemini-2.5-flash"
 _HANDOFF_CHAR_LIMIT = 3_000
 _PHASE_ORDER = ["Research", "Design", "Development", "Testing", "Deployment"]
 _RETRY_DELAYS = [2, 5, 10]
+# Maximum seconds allowed for a single LLM call attempt before it is cancelled.
+_LLM_CALL_TIMEOUT_SECONDS = 300
 
 _PHASE_DELIVERABLE_GUIDANCE: dict[str, str] = {
     "Research": (
@@ -144,11 +146,37 @@ class AgentExecutionEngine:
         The caller is responsible for ensuring the execution record is in
         'pending' status before calling this method.
         """
-        # 1. Load entities
+        # 1. Load execution first so we can always report a terminal status
         execution = await self._load_execution(execution_id)
-        task = await self._load_task(task_id)
-        agent = await self._load_agent(agent_id)
-        project = await self._load_project(task.project_id)
+
+        # Load remaining entities before transitioning to "running".
+        # Any failure here marks the execution as failed immediately so it
+        # never stays in "pending" indefinitely.
+        try:
+            task = await self._load_task(task_id)
+            agent = await self._load_agent(agent_id)
+            project = await self._load_project(task.project_id)
+        except Exception as exc:
+            logger.error(
+                "Execution %s | setup failed before running | task=%s agent=%s | %s",
+                execution_id, task_id, agent_id, exc,
+            )
+            execution.status = "failed"
+            execution.error_message = f"Setup error: {exc}"
+            execution.completed_at = datetime.now(timezone.utc)
+            try:
+                await self.db.commit()
+            except Exception:
+                logger.exception(
+                    "Execution %s: failed to persist setup failure", execution_id
+                )
+            return execution
+
+        provider = get_provider_for_model(agent.model or _DEFAULT_MODEL)
+        logger.info(
+            "Execution %s | task_id=%s agent_id=%s provider=%s model=%s | pending → running",
+            execution_id, task_id, agent_id, provider, agent.model or _DEFAULT_MODEL,
+        )
 
         # 2. Stamp running state
         execution.status = "running"
@@ -159,15 +187,16 @@ class AgentExecutionEngine:
         try:
             return await self._run_inner(execution, agent, task, project)
         except Exception as exc:
-            # Guard: any unhandled exception must not leave the execution in "running".
-            # The inner _run_inner already commits a terminal status for expected failures
-            # (LLM errors, RetryExhaustedError). This catches everything else —
-            # knowledge retrieval, prompt building, memory loading, DB commit errors, etc.
+            # Guard: any unhandled exception must not leave the execution in a
+            # non-terminal state.  _run_inner may set execution.status="completed"
+            # in memory and then fail on the DB commit — the in-memory value would
+            # be "completed" even though the DB still has "running".  Checking for
+            # any non-terminal status (not just "running") closes that gap.
             logger.exception(
                 "Execution %s: unhandled exception outside LLM block: %s",
                 execution.id, exc,
             )
-            if execution.status == "running":
+            if execution.status not in ("completed", "failed", "cancelled"):
                 execution.status = "failed"
                 execution.error_message = f"Unexpected error: {exc}"
                 execution.completed_at = datetime.now(timezone.utc)
@@ -286,6 +315,12 @@ class AgentExecutionEngine:
                 "dependencies_used": dep_refs,
             }
             await self.db.commit()
+            logger.error(
+                "Execution %s | task_id=%s agent_id=%s provider=%s | running → failed | "
+                "error_type=%s elapsed_ms=%d",
+                execution.id, task.id, agent.id, provider_used,
+                error_type_str or "unknown", elapsed_ms,
+            )
 
             # 8. Update execution logs
             await self._insert_execution_log(
@@ -305,6 +340,12 @@ class AgentExecutionEngine:
 
         # Success path
         assert llm_response is not None
+        logger.info(
+            "Execution %s | task_id=%s agent_id=%s provider=%s | running → completed | "
+            "tokens=%d elapsed_ms=%d",
+            execution.id, task.id, agent.id, provider_used,
+            llm_response.input_tokens + llm_response.output_tokens, elapsed_ms,
+        )
         execution.status = "completed"
         execution.output_data = {
             "content": llm_response.content,
@@ -605,12 +646,23 @@ class AgentExecutionEngine:
             if attempt > 0:
                 await asyncio.sleep(_RETRY_DELAYS[attempt - 1])
             try:
-                response = await llm_complete(
-                    model=model,
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt,
+                response = await asyncio.wait_for(
+                    llm_complete(
+                        model=model,
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                    ),
+                    timeout=_LLM_CALL_TIMEOUT_SECONDS,
                 )
                 return response, attempt
+            except asyncio.TimeoutError as exc:
+                logger.error(
+                    "Execution %s: LLM call timed out after %ds (attempt %d)",
+                    execution.id, _LLM_CALL_TIMEOUT_SECONDS, attempt + 1,
+                )
+                raise RuntimeError(
+                    f"LLM call timed out after {_LLM_CALL_TIMEOUT_SECONDS}s"
+                ) from exc
             except Exception as exc:
                 if not is_retryable_error(exc):
                     raise

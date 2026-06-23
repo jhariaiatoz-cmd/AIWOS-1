@@ -63,12 +63,14 @@ class _WorkflowStepEngine(AgentExecutionEngine):
         *,
         knowledge_context: str = "",
         prior_phase_context: str = "",
+        memory_context: str = "",
     ) -> str:
         base = super()._build_user_prompt(
             task,
             project,
             knowledge_context=knowledge_context,
             prior_phase_context=prior_phase_context,
+            memory_context=memory_context,
         )
         if not self._prior_step_output:
             return base
@@ -102,18 +104,32 @@ class WorkflowExecutionEngine:
         self,
         workflow_id: uuid.UUID,
         organization_id: uuid.UUID,
+        *,
+        wf_exec_id: Optional[uuid.UUID] = None,
     ) -> WorkflowExecution:
         """
         Execute all steps of the workflow sequentially and return the
         WorkflowExecution record with full state.
+
+        If wf_exec_id is provided the engine reuses that existing
+        WorkflowExecution row (created by the endpoint before dispatching
+        the background task); otherwise a new row is created.
         """
         workflow = await self._load_workflow(workflow_id)
         steps = sorted(workflow.steps, key=lambda s: s.step_order)
 
-        wf_exec = await self._create_workflow_execution(workflow, organization_id)
+        if wf_exec_id is not None:
+            wf_exec = await self._load_workflow_execution(wf_exec_id)
+        else:
+            wf_exec = await self._create_workflow_execution(workflow, organization_id)
+
+        logger.info(
+            "Workflow %s | execution_id=%s | %d step(s) | starting",
+            workflow_id, wf_exec.id, len(steps),
+        )
 
         if not steps:
-            logger.info("Workflow %s has no steps; marking complete.", workflow_id)
+            logger.info("Workflow %s | execution_id=%s | no steps → completed", workflow_id, wf_exec.id)
             return await self._finish(wf_exec, status="completed")
 
         prior_output: Optional[str] = None
@@ -124,10 +140,8 @@ class WorkflowExecutionEngine:
             task_id = self._extract_task_id(step)
             if task_id is None:
                 logger.warning(
-                    "Workflow %s step '%s' (order=%d) has no task_id in config; skipping.",
-                    workflow_id,
-                    step.node_id,
-                    step.step_order,
+                    "Workflow %s | execution_id=%s | step '%s' (order=%d) has no task_id; skipping.",
+                    workflow_id, wf_exec.id, step.node_id, step.step_order,
                 )
                 continue
 
@@ -135,17 +149,18 @@ class WorkflowExecutionEngine:
             await self.db.commit()
 
             logger.info(
-                "Workflow %s: executing step '%s' (order=%d, task=%s)",
-                workflow_id,
-                step.node_id,
-                step.step_order,
-                task_id,
+                "Workflow %s | execution_id=%s | step '%s' order=%d task_id=%s | starting",
+                workflow_id, wf_exec.id, step.node_id, step.step_order, task_id,
             )
 
             result, error = await self._execute_step(step, task_id, prior_output)
 
             if error or result is None or result.status == "failed":
                 err_msg = error or (result.error_message if result else "Unknown error")
+                logger.error(
+                    "Workflow %s | execution_id=%s | step '%s' order=%d task_id=%s | failed: %s",
+                    workflow_id, wf_exec.id, step.node_id, step.step_order, task_id, err_msg,
+                )
                 # Record handoff even for failed target steps so history is complete
                 if prev_result is not None and prior_output is not None:
                     await self._record_handoff(
@@ -159,6 +174,11 @@ class WorkflowExecutionEngine:
 
             # Step succeeded — capture output
             output_content = (result.output_data or {}).get("content", "")
+            logger.info(
+                "Workflow %s | execution_id=%s | step '%s' order=%d task_id=%s agent_id=%s | completed",
+                workflow_id, wf_exec.id, step.node_id, step.step_order, task_id,
+                result.agent_id,
+            )
             await self._record_step_completion(wf_exec, step, result, output_content)
 
             # Record the handoff: previous agent → this agent
@@ -171,6 +191,10 @@ class WorkflowExecutionEngine:
             prev_result = result
             prior_output = output_content or None
 
+        logger.info(
+            "Workflow %s | execution_id=%s | all steps completed → completed",
+            workflow_id, wf_exec.id,
+        )
         return await self._finish(wf_exec, status="completed")
 
     # -------------------------------------------------------------------------
@@ -190,11 +214,16 @@ class WorkflowExecutionEngine:
         try:
             task = await self._load_task(task_id)
         except ValueError as exc:
+            logger.error("Step '%s': task load failed — %s", step.node_id, exc)
             return None, str(exc)
 
         try:
             agent_id = await self._resolve_agent_id(step, task)
         except ValueError as exc:
+            logger.error(
+                "Step '%s' task_id=%s: agent resolution failed — %s",
+                step.node_id, task_id, exc,
+            )
             return None, str(exc)
 
         execution = TaskExecution(
@@ -208,15 +237,19 @@ class WorkflowExecutionEngine:
         await self.db.commit()
         await self.db.refresh(execution)
 
+        logger.info(
+            "Step '%s' task_id=%s agent_id=%s execution_id=%s | starting",
+            step.node_id, task_id, agent_id, execution.id,
+        )
+
         try:
             engine = _WorkflowStepEngine(self.db, prior_step_output=prior_output)
             result = await engine.run(agent_id, task_id, execution.id)
             return result, None
         except Exception as exc:
             logger.exception(
-                "WorkflowExecutionEngine: unhandled error on step '%s': %s",
-                step.node_id,
-                exc,
+                "WorkflowExecutionEngine: unhandled error on step '%s' execution_id=%s: %s",
+                step.node_id, execution.id, exc,
             )
             return None, str(exc)
 
@@ -339,6 +372,18 @@ class WorkflowExecutionEngine:
     # -------------------------------------------------------------------------
     # Entity loaders / resolvers
     # -------------------------------------------------------------------------
+
+    async def _load_workflow_execution(self, wf_exec_id: uuid.UUID) -> WorkflowExecution:
+        result = await self.db.execute(
+            select(WorkflowExecution).where(
+                WorkflowExecution.id == wf_exec_id,
+                WorkflowExecution.deleted_at.is_(None),
+            )
+        )
+        wf_exec = result.scalar_one_or_none()
+        if wf_exec is None:
+            raise ValueError(f"WorkflowExecution {wf_exec_id} not found.")
+        return wf_exec
 
     async def _load_workflow(self, workflow_id: uuid.UUID) -> Workflow:
         result = await self.db.execute(
