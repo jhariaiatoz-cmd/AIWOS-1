@@ -156,6 +156,39 @@ class AgentExecutionEngine:
         execution.started_at = datetime.now(timezone.utc)
         await self.db.commit()
 
+        try:
+            return await self._run_inner(execution, agent, task, project)
+        except Exception as exc:
+            # Guard: any unhandled exception must not leave the execution in "running".
+            # The inner _run_inner already commits a terminal status for expected failures
+            # (LLM errors, RetryExhaustedError). This catches everything else —
+            # knowledge retrieval, prompt building, memory loading, DB commit errors, etc.
+            logger.exception(
+                "Execution %s: unhandled exception outside LLM block: %s",
+                execution.id, exc,
+            )
+            if execution.status == "running":
+                execution.status = "failed"
+                execution.error_message = f"Unexpected error: {exc}"
+                execution.completed_at = datetime.now(timezone.utc)
+                try:
+                    await self.db.commit()
+                except Exception:
+                    logger.exception(
+                        "Execution %s: failed to persist error state after unhandled exception",
+                        execution.id,
+                    )
+            return execution
+
+    async def _run_inner(
+        self,
+        execution: TaskExecution,
+        agent: Agent,
+        task: Task,
+        project: "Project",
+    ) -> TaskExecution:
+        """Inner execution body — called after the execution is committed as 'running'."""
+
         # 3. Load knowledge context
         knowledge_context, knowledge_meta = await get_document_context(
             self.db,

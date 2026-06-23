@@ -254,6 +254,10 @@ export function ExecutionViewer({ executionId, taskTitle, onClose }: ExecutionVi
     queryKey: ["execution", executionId],
     queryFn: () => executionApi.get(executionId),
     staleTime: 30_000,
+    refetchInterval: (query) => {
+      const s = query.state.data?.status;
+      return s === "pending" || s === "running" ? 3_000 : false;
+    },
   });
 
   useEffect(() => {
