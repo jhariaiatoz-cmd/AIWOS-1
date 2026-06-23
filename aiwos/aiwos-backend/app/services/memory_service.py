@@ -2,7 +2,7 @@
 MemoryService — persistent per-agent memory across executions.
 
 Stores short summaries of completed work and injects them into prompts
-so agents recall what they have previously done on a project.
+so agents recall what they have previously done.
 """
 
 import logging
@@ -17,7 +17,7 @@ from app.models.agent_memory import AgentMemory
 
 logger = logging.getLogger(__name__)
 
-_MEMORY_FETCH_LIMIT = 20
+_MEMORY_FETCH_LIMIT = 5
 _MEMORY_CHAR_LIMIT = 2_000
 _SUMMARY_SNIPPET_CHARS = 500
 
@@ -29,6 +29,9 @@ async def save_memory(
     organization_id: uuid.UUID,
     content: str,
     project_id: Optional[uuid.UUID] = None,
+    task_id: Optional[uuid.UUID] = None,
+    execution_id: Optional[uuid.UUID] = None,
+    memory_type: str = "task_output",
 ) -> Optional[AgentMemory]:
     """Persist a memory entry for an agent. Returns None if the table is unavailable."""
     memory = AgentMemory(
@@ -36,6 +39,9 @@ async def save_memory(
         organization_id=organization_id,
         agent_id=agent_id,
         project_id=project_id,
+        task_id=task_id,
+        execution_id=execution_id,
+        memory_type=memory_type,
         content=content,
     )
     db.add(memory)
@@ -52,30 +58,26 @@ async def load_recent_memories(
     db: AsyncSession,
     *,
     agent_id: uuid.UUID,
-    project_id: Optional[uuid.UUID] = None,
     max_chars: int = _MEMORY_CHAR_LIMIT,
 ) -> str:
     """
-    Load the most recent memories for an agent, optionally scoped to a project.
+    Load the most recent memories for an agent (agent-scoped, top 5).
 
     Returns a formatted string ready to inject into a prompt, capped at max_chars.
-    Memories are ordered newest-first; the returned string reflects that order so
-    the agent sees the most relevant context first.
+    Returns empty string if the table is empty or unavailable.
     """
-    filters = [AgentMemory.agent_id == agent_id]
-    if project_id is not None:
-        filters.append(AgentMemory.project_id == project_id)
-
     try:
         result = await db.execute(
             select(AgentMemory)
-            .where(*filters)
+            .where(AgentMemory.agent_id == agent_id)
             .order_by(AgentMemory.created_at.desc())
             .limit(_MEMORY_FETCH_LIMIT)
         )
         memories = result.scalars().all()
     except (ProgrammingError, OperationalError) as exc:
-        logger.warning("agent_memories table unavailable; continuing without memory context: %s", exc)
+        logger.warning(
+            "agent_memories table unavailable; continuing without memory context: %s", exc
+        )
         return ""
 
     if not memories:
@@ -84,7 +86,7 @@ async def load_recent_memories(
     lines: list[str] = []
     total = 0
     for mem in memories:
-        entry = f"- {mem.content}"
+        entry = f"* {mem.content}"
         if total + len(entry) > max_chars:
             remaining = max_chars - total
             if remaining > 20:
@@ -96,7 +98,7 @@ async def load_recent_memories(
     if not lines:
         return ""
 
-    return "## Agent Memory\n\n" + "\n".join(lines)
+    return "Recent Memories:\n\n" + "\n".join(lines)
 
 
 def build_memory_content(task_title: str, task_phase: Optional[str], llm_output: str) -> str:

@@ -30,6 +30,7 @@ from app.models.task import Task
 from app.models.task_execution import TaskExecution
 from app.services.conversation_service import _build_system_prompt, _detect_persona_conduct
 from app.services.knowledge_retrieval_service import get_document_context
+from app.services.agent_communication_service import gather_agent_context
 from app.services.memory_service import build_memory_content, load_recent_memories, save_memory
 from app.services.llm_provider_service import (
     LLMResponse,
@@ -236,8 +237,10 @@ class AgentExecutionEngine:
         memory_context = await load_recent_memories(
             self.db,
             agent_id=agent.id,
-            project_id=task.project_id,
         )
+
+        # 4b. Gather pre-execution context from peer agents (non-blocking)
+        comm_context = await self._gather_agent_communications(agent, task, execution)
 
         # 5. Build prompts
         system_prompt = _build_system_prompt(agent)
@@ -247,6 +250,7 @@ class AgentExecutionEngine:
             knowledge_context=knowledge_context,
             prior_phase_context=prior_phase_context,
             memory_context=memory_context,
+            comm_context=comm_context,
         )
         execution.input_data = {"system_prompt": system_prompt, "user_prompt": user_prompt}
 
@@ -373,6 +377,9 @@ class AgentExecutionEngine:
             agent_id=agent.id,
             organization_id=execution.organization_id,
             project_id=task.project_id,
+            task_id=task.id,
+            execution_id=execution.id,
+            memory_type="task_output",
             content=build_memory_content(task.title, task.phase, llm_response.content),
         )
 
@@ -521,6 +528,27 @@ class AgentExecutionEngine:
 
         return "## Previous Team Deliverables\n\n" + "\n\n".join(sections), dep_refs
 
+    async def _gather_agent_communications(
+        self,
+        agent: Agent,
+        task: Task,
+        execution: TaskExecution,
+    ) -> str:
+        """Request pre-execution context from peer project agents. Never raises."""
+        try:
+            return await gather_agent_context(
+                self.db,
+                agent=agent,
+                task=task,
+                organization_id=execution.organization_id,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Execution %s: agent communication gather failed (non-fatal): %s",
+                execution.id, exc,
+            )
+            return ""
+
     # -------------------------------------------------------------------------
     # Prompt building
     # -------------------------------------------------------------------------
@@ -533,6 +561,7 @@ class AgentExecutionEngine:
         knowledge_context: str = "",
         prior_phase_context: str = "",
         memory_context: str = "",
+        comm_context: str = "",
     ) -> str:
         lines: list[str] = [
             "You are executing a task and must produce a professional deliverable as your output.",
@@ -561,6 +590,14 @@ class AgentExecutionEngine:
                 memory_context,
                 "",
                 "Use the above memory as background context on work you have previously done.",
+            ]
+
+        if comm_context:
+            lines += [
+                "",
+                comm_context,
+                "",
+                "Use the above agent communications as supplementary expert context for your deliverable.",
             ]
 
         if knowledge_context:

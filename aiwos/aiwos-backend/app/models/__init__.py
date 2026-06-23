@@ -24,6 +24,7 @@ from app.models.notification import Notification
 from app.models.workflow_execution import WorkflowExecution
 from app.models.agent_handoff import AgentHandoff
 from app.models.agent_memory import AgentMemory
+from app.models.agent_message import AgentMessage
 
 __all__ = [
     "Base",
@@ -52,4 +53,5 @@ __all__ = [
     "WorkflowExecution",
     "AgentHandoff",
     "AgentMemory",
+    "AgentMessage",
 ]

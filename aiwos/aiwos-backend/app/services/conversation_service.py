@@ -30,7 +30,8 @@ from app.services.llm_provider_service import (
 
 log = logging.getLogger(__name__)
 
-_HISTORY_WINDOW = 20   # prior turns to include in LLM context
+_HISTORY_WINDOW = 10        # prior turns to load from DB for context
+_MAX_HISTORY_CHARS = 20_000  # hard cap on total conversation history characters
 _FALLBACK_MODEL  = "gemini-2.5-flash"
 
 
@@ -358,6 +359,45 @@ def _build_chat_history(history: List[Message]) -> List[ChatMessage]:
 
 
 # ---------------------------------------------------------------------------
+# Conversation context formatter
+# ---------------------------------------------------------------------------
+
+def _format_conversation_context(history: List[Message], new_message: str) -> str:
+    """
+    Prepend recent conversation history to the current user message as formatted
+    text.  Walks history newest-first so the most recent turns survive the
+    _MAX_HISTORY_CHARS cap; old messages are dropped when the budget runs out.
+    Returns new_message unchanged when history is empty.
+    """
+    if not history:
+        return new_message
+
+    selected: List[str] = []
+    char_count = 0
+
+    for msg in reversed(history):
+        role = "User" if msg.sender_type == "user" else "Agent"
+        line = f"{role}: {msg.content}"
+        if char_count + len(line) > _MAX_HISTORY_CHARS:
+            break
+        selected.insert(0, line)
+        char_count += len(line) + 1  # +1 for newline
+
+    if not selected:
+        return new_message
+
+    parts = [
+        "Conversation History:",
+        "",
+        *selected,
+        "",
+        "Current User Message:",
+        new_message,
+    ]
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
@@ -482,7 +522,6 @@ async def create_conversation(
             organization_id=conv.organization_id,
             agent_id=agent.id,
             new_message=body.prompt,
-            prior_messages=[],
         )
 
         result = await db.execute(
@@ -514,7 +553,6 @@ async def send_message(
         )
     agent = await _get_agent(db, conv.agent_id)
 
-    prior = list(conv.messages)[-_HISTORY_WINDOW:]
     effective_user_id = user_id or conv.user_id or uuid.UUID("00000000-0000-0000-0000-000000000001")
 
     user_msg = Message(
@@ -535,7 +573,6 @@ async def send_message(
         organization_id=conv.organization_id,
         agent_id=agent.id,
         new_message=content,
-        prior_messages=prior,
     )
 
     return [user_msg]
@@ -552,14 +589,12 @@ def _schedule_agent_reply(
     organization_id: uuid.UUID,
     agent_id: uuid.UUID,
     new_message: str,
-    prior_messages: List[Message],
 ) -> None:
     kwargs = dict(
         conversation_id=conversation_id,
         organization_id=organization_id,
         agent_id=agent_id,
         new_message=new_message,
-        prior_messages=prior_messages,
     )
     if background_tasks is not None:
         background_tasks.add_task(_generate_agent_reply, **kwargs)
@@ -573,7 +608,6 @@ async def _generate_agent_reply(
     organization_id: uuid.UUID,
     agent_id: uuid.UUID,
     new_message: str,
-    prior_messages: List[Message],
 ) -> None:
     """
     Background task: call the LLM and persist the agent's reply.
@@ -590,7 +624,29 @@ async def _generate_agent_reply(
             )
             return
 
-        agent_content, payload = await _call_llm(agent, new_message, prior_messages)
+        # Load recent conversation history — fault tolerant: never blocks response
+        history_msgs: List[Message] = []
+        try:
+            rows = (
+                await db.execute(
+                    select(Message)
+                    .where(Message.conversation_id == conversation_id)
+                    .order_by(Message.created_at.desc())
+                    .limit(_HISTORY_WINDOW + 1)
+                )
+            ).scalars().all()
+            # rows[0] is the current user message just committed; drop it
+            history_msgs = list(reversed(rows[1:]))
+        except Exception as exc:
+            log.warning(
+                "Could not load conversation history for conversation=%s; continuing without: %s",
+                conversation_id, exc,
+            )
+
+        # Inject history as text into the user message
+        message_with_context = _format_conversation_context(history_msgs, new_message)
+
+        agent_content, payload = await _call_llm(agent, message_with_context, [])
 
         agent_msg = Message(
             id=uuid.uuid4(),
