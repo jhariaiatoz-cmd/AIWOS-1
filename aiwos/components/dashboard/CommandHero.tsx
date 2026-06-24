@@ -9,12 +9,22 @@ import { useAuthStore } from "@/lib/store/auth";
 import { useWorkspaceStore } from "@/lib/store/workspace";
 import { agentApi, type AgentApiResponse } from "@/lib/api/agents";
 import { conversationApi } from "@/lib/api/conversations";
+import { commandCenterApi, type CommandCenterResponse } from "@/lib/api/command_center";
 import { AgentSelectModal } from "./AgentSelectModal";
+import { ProjectCreatedCard } from "./ProjectCreatedCard";
+
+// Matches: build|create|plan <anything>
+const _PROJECT_CMD_RE = /^\s*(build|create|plan)\s+.+/i;
+
+function isProjectCommand(prompt: string): boolean {
+  return _PROJECT_CMD_RE.test(prompt.trim());
+}
 
 export function CommandHero() {
   const [command, setCommand] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [projectResult, setProjectResult] = useState<CommandCenterResponse | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const autoResize = useCallback(() => {
@@ -29,6 +39,7 @@ export function CommandHero() {
   useEffect(() => {
     autoResize();
   }, [command, autoResize]);
+
   const router = useRouter();
   const { user, currentOrgId } = useAuthStore();
   const setPendingConversationId = useWorkspaceStore(
@@ -45,6 +56,30 @@ export function CommandHero() {
     staleTime: 60_000,
   });
 
+  // ── Project command flow ──────────────────────────────────────────────────
+  const executeProjectCommand = useMutation({
+    mutationFn: async () => {
+      if (!currentOrgId) throw new Error("No organization found.");
+      return commandCenterApi.execute({
+        organization_id: currentOrgId,
+        prompt: command.trim(),
+      });
+    },
+    onSuccess: (result) => {
+      if (result.is_project_command) {
+        setProjectResult(result);
+        setCommand("");
+      } else {
+        // Backend didn't classify as project — fall through to agent modal
+        setShowModal(true);
+      }
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    },
+  });
+
+  // ── Normal conversation flow ──────────────────────────────────────────────
   const createConversation = useMutation({
     mutationFn: async (agent: AgentApiResponse) => {
       if (!currentOrgId) throw new Error("No organization found.");
@@ -68,10 +103,13 @@ export function CommandHero() {
     },
   });
 
+  const isPending = executeProjectCommand.isPending || createConversation.isPending;
+
   function handleSubmit() {
     const prompt = command.trim();
-    if (!prompt || createConversation.isPending) return;
+    if (!prompt || isPending) return;
     setError(null);
+    setProjectResult(null);
 
     if (!isAuthenticated) {
       router.push("/chat");
@@ -79,8 +117,11 @@ export function CommandHero() {
       return;
     }
 
-    // Open agent selection modal — user picks who handles this
-    setShowModal(true);
+    if (isProjectCommand(prompt)) {
+      executeProjectCommand.mutate();
+    } else {
+      setShowModal(true);
+    }
   }
 
   function handleAgentSelect(agent: AgentApiResponse) {
@@ -108,6 +149,7 @@ export function CommandHero() {
             onChange={(e) => {
               setCommand(e.target.value);
               if (error) setError(null);
+              if (projectResult) setProjectResult(null);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -115,7 +157,7 @@ export function CommandHero() {
                 handleSubmit();
               }
             }}
-            disabled={createConversation.isPending}
+            disabled={isPending}
             className="w-full rounded-2xl border px-4 py-3.5 pr-14 text-sm outline-none transition-all focus:shadow-[0_0_0_3px_var(--accent-glow)] focus:border-primary disabled:cursor-not-allowed disabled:opacity-60 resize-none"
             style={{
               background: "var(--card)",
@@ -131,12 +173,12 @@ export function CommandHero() {
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={!command.trim() || createConversation.isPending}
+            disabled={!command.trim() || isPending}
             className="absolute right-2.5 bottom-2.5 flex h-9 w-9 items-center justify-center rounded-lg text-white transition-opacity disabled:opacity-40"
             style={{ background: "var(--purple)" }}
             aria-label="Send command"
           >
-            {createConversation.isPending ? (
+            {isPending ? (
               <Loader2 size={16} className="animate-spin" />
             ) : (
               <Send size={16} />
@@ -147,6 +189,11 @@ export function CommandHero() {
         {/* Status row */}
         <div className="mb-4 flex min-h-[20px] items-center justify-center">
           {error && <p className="text-xs text-red-500">{error}</p>}
+          {executeProjectCommand.isPending && (
+            <p className="animate-pulse text-xs text-muted-foreground">
+              Building your project…
+            </p>
+          )}
           {createConversation.isPending && (
             <p className="animate-pulse text-xs text-muted-foreground">
               Starting conversation…
@@ -154,8 +201,18 @@ export function CommandHero() {
           )}
         </div>
 
-        {/* Suggestion chips — hidden while executing */}
-        {!createConversation.isPending && (
+        {/* Project result card */}
+        {projectResult && (
+          <div className="mx-auto mb-4 max-w-[640px]">
+            <ProjectCreatedCard
+              result={projectResult}
+              onDismiss={() => setProjectResult(null)}
+            />
+          </div>
+        )}
+
+        {/* Suggestion chips — hidden while executing or showing result */}
+        {!isPending && !projectResult && (
           <div className="flex flex-wrap items-center justify-center gap-2">
             {commandSuggestions.map((s) => (
               <button
@@ -164,6 +221,7 @@ export function CommandHero() {
                 onClick={() => {
                   setCommand(s.text);
                   setError(null);
+                  setProjectResult(null);
                 }}
                 className="rounded-full border px-3.5 py-1.5 text-xs text-muted-foreground transition-all hover:border-primary hover:text-primary"
                 style={{

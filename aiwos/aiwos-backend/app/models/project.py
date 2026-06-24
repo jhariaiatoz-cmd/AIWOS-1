@@ -1,7 +1,7 @@
 import uuid
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from sqlalchemy import ForeignKey, String, Text, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, SoftDeleteMixin
@@ -49,6 +49,7 @@ class Project(Base, TimestampMixin, SoftDeleteMixin):
         ForeignKey("agents.id", ondelete="SET NULL"),
         nullable=True
     )
+    blueprint: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     organization: Mapped["Organization"] = relationship(

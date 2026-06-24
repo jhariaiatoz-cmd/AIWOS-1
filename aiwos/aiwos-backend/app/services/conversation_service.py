@@ -671,15 +671,40 @@ async def _generate_agent_reply(
         # Knowledge retrieval (opt-in: only when message triggers it)
         knowledge_context = ""
         citations_block = ""
+        kb_error: str | None = None
         try:
             org_filenames = await get_org_filenames(db, organization_id)
             if should_use_knowledge_for_chat(new_message, org_filenames):
-                knowledge_context, citations_block, _ = await get_chat_document_context(
+                knowledge_context, citations_block, _, kb_error = await get_chat_document_context(
                     db, organization_id, new_message,
                     filenames=org_filenames,
                 )
+                if knowledge_context:
+                    log.debug(
+                        "KB context injected: %d chars for conversation=%s",
+                        len(knowledge_context), conversation_id,
+                    )
         except Exception as exc:
             log.warning("Knowledge retrieval failed (non-fatal): %s", exc)
+
+        # Short-circuit: file not found or unreadable — skip LLM, return error directly
+        if kb_error:
+            agent_msg = Message(
+                id=uuid.uuid4(),
+                organization_id=organization_id,
+                conversation_id=conversation_id,
+                sender_type="agent",
+                sender_id=agent.id,
+                content=kb_error,
+                payload=None,
+            )
+            db.add(agent_msg)
+            await db.commit()
+            log.info(
+                "KB error short-circuit for conversation=%s: %s",
+                conversation_id, kb_error[:120],
+            )
+            return
 
         # Inject history as text into the user message
         message_with_context = _format_conversation_context(history_msgs, new_message)

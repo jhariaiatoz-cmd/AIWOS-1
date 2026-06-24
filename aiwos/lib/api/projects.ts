@@ -1,9 +1,14 @@
 import { apiClient } from "./client";
+import type { BlueprintData, PromptPackData } from "./command_center";
 
 export type AgentInfo = {
   id: string;
   name: string;
   role: string;
+};
+
+export type ProjectBlueprint = BlueprintData & {
+  prompt_pack?: PromptPackData;
 };
 
 export type ProjectApiResponse = {
@@ -20,6 +25,7 @@ export type ProjectApiResponse = {
   progress: number;
   total_tasks: number;
   completed_tasks: number;
+  blueprint: ProjectBlueprint | null;
 };
 
 export const projectApi = {

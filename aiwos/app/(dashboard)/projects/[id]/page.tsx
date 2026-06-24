@@ -20,8 +20,14 @@ import {
   TestTube2,
   Rocket,
   GitBranch,
+  BookOpen,
+  Package,
+  Copy,
+  Check,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
-import { projectApi } from "@/lib/api/projects";
+import { projectApi, type ProjectBlueprint } from "@/lib/api/projects";
 import { taskApi, type TaskApiResponse } from "@/lib/api/tasks";
 import { executionApi, type ExecutionApiResponse } from "@/lib/api/executions";
 import { ExecutionViewer } from "@/components/executions/ExecutionViewer";
@@ -304,6 +310,122 @@ function AgentCard({ stat, isLead = false }: { stat: AgentStat; isLead?: boolean
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Blueprint + Prompt Pack components
+// ---------------------------------------------------------------------------
+
+const BLUEPRINT_SECTIONS: { key: keyof ProjectBlueprint; label: string }[] = [
+  { key: "requirements", label: "Requirements" },
+  { key: "features", label: "Features" },
+  { key: "user_roles", label: "User Roles" },
+  { key: "architecture", label: "Architecture" },
+  { key: "database_design", label: "Database Design" },
+  { key: "api_modules", label: "API Modules" },
+  { key: "deployment_strategy", label: "Deployment Strategy" },
+];
+
+const PROMPT_PACK_ITEMS: { key: string; label: string }[] = [
+  { key: "frontend", label: "Frontend Prompt" },
+  { key: "backend", label: "Backend Prompt" },
+  { key: "database", label: "Database Prompt" },
+  { key: "testing", label: "Testing Prompt" },
+  { key: "deployment", label: "Deployment Prompt" },
+];
+
+function CopyBtn({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async (e) => {
+        e.stopPropagation();
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+      className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors"
+      style={{
+        background: copied ? "rgba(16,185,129,0.12)" : "var(--elevated)",
+        color: copied ? "var(--green)" : "var(--muted-foreground)",
+      }}
+    >
+      {copied ? <Check size={10} /> : <Copy size={10} />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function CollapsibleSection({
+  label,
+  content,
+  defaultOpen = false,
+}: {
+  label: string;
+  content: string;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div
+      className="rounded-lg border overflow-hidden"
+      style={{ borderColor: "var(--border-light)" }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((p) => !p)}
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-semibold text-left transition-colors hover:bg-[var(--elevated)]"
+        style={{ color: "var(--foreground)" }}
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <span className="flex-1">{label}</span>
+      </button>
+      {open && (
+        <div
+          className="px-4 pb-3 pt-1 text-xs leading-relaxed whitespace-pre-wrap"
+          style={{
+            color: "var(--muted-foreground)",
+            borderTop: "1px solid var(--border-light)",
+          }}
+        >
+          {content}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PromptSection({ label, content }: { label: string; content: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className="rounded-lg border overflow-hidden"
+      style={{ borderColor: "var(--border-light)" }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((p) => !p)}
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-medium text-left transition-colors hover:bg-[var(--elevated)]"
+        style={{ color: "var(--foreground)" }}
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <span className="flex-1">{label}</span>
+        <CopyBtn text={content} />
+      </button>
+      {open && (
+        <div
+          className="px-4 pb-3 pt-1 text-xs leading-relaxed whitespace-pre-wrap"
+          style={{
+            color: "var(--muted-foreground)",
+            borderTop: "1px solid var(--border-light)",
+          }}
+        >
+          {content}
+        </div>
+      )}
     </div>
   );
 }
@@ -638,6 +760,70 @@ export default function ProjectDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Project Blueprint */}
+      {project.blueprint && (
+        <div
+          className="mb-6 rounded-xl border overflow-hidden"
+          style={{ background: "var(--card)", borderColor: "var(--border-light)" }}
+        >
+          <div
+            className="flex items-center gap-2 px-4 py-3"
+            style={{ borderBottom: "1px solid var(--border-light)", background: "var(--surface)" }}
+          >
+            <BookOpen size={14} style={{ color: "var(--purple)" }} />
+            <span className="text-sm font-semibold text-foreground">Project Blueprint</span>
+          </div>
+          <div className="p-4 space-y-2">
+            {BLUEPRINT_SECTIONS.filter(({ key }) => {
+              const val = project.blueprint![key as keyof ProjectBlueprint];
+              return val && typeof val === "string";
+            }).map(({ key, label }) => (
+              <CollapsibleSection
+                key={key}
+                label={label}
+                content={project.blueprint![key as keyof ProjectBlueprint] as string}
+                defaultOpen={key === "requirements"}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Prompt Pack */}
+      {project.blueprint?.prompt_pack && (
+        <div
+          className="mb-6 rounded-xl border overflow-hidden"
+          style={{ background: "var(--card)", borderColor: "var(--border-light)" }}
+        >
+          <div
+            className="flex items-center gap-2 px-4 py-3"
+            style={{ borderBottom: "1px solid var(--border-light)", background: "var(--surface)" }}
+          >
+            <Package size={14} style={{ color: "var(--purple)" }} />
+            <span className="text-sm font-semibold text-foreground">Prompt Pack</span>
+            <span
+              className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-semibold"
+              style={{ background: "var(--elevated)", color: "var(--muted-foreground)" }}
+            >
+              {PROMPT_PACK_ITEMS.filter(({ key }) =>
+                (project.blueprint!.prompt_pack as Record<string, string | undefined>)[key]
+              ).length} prompts
+            </span>
+          </div>
+          <div className="p-4 space-y-2">
+            {PROMPT_PACK_ITEMS.filter(({ key }) =>
+              (project.blueprint!.prompt_pack as Record<string, string | undefined>)[key]
+            ).map(({ key, label }) => (
+              <PromptSection
+                key={key}
+                label={label}
+                content={(project.blueprint!.prompt_pack as Record<string, string>)[key]}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Team section — only rendered once tasks are loaded and agents are assigned */}
       {!tasksPending && agentStats.length > 0 && (

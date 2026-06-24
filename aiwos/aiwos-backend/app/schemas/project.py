@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -62,5 +62,6 @@ class ProjectResponse(BaseModel):
     progress: int = 0
     total_tasks: int = 0
     completed_tasks: int = 0
+    blueprint: Optional[Dict[str, Any]] = None
 
     model_config = {"from_attributes": True}

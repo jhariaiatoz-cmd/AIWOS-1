@@ -4,6 +4,7 @@ Keyword-based knowledge retrieval for agent task execution.
 Splits knowledge files into overlapping chunks and ranks them by
 term-frequency overlap with the task context. No embedding API required.
 """
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -12,6 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.knowledge_file import KnowledgeFile
+
+log = logging.getLogger(__name__)
 
 # ── Chunking parameters ───────────────────────────────────────────────────────
 
@@ -31,6 +34,13 @@ _STOP_WORDS = {
     "him", "her", "his", "they", "them", "these", "those", "being", "were",
     "does", "did", "had", "let", "get", "put", "set", "via", "per",
 }
+
+# Detects "read|open|show|... <filename.ext>" patterns used to identify explicit file requests.
+_READ_FILENAME_PATTERN = re.compile(
+    r"\b(?:read|open|show|load|summarize|summarise|analyze|analyse|fetch|view|display)\s+"
+    r"[\"']?([\w.\-]+\.(?:pdf|docx|txt|csv|md))[\"']?\b",
+    re.IGNORECASE,
+)
 
 
 # ── Data structures ───────────────────────────────────────────────────────────
@@ -228,15 +238,21 @@ async def get_document_context(
 # ── Chat-specific knowledge retrieval ─────────────────────────────────────────
 
 _CHAT_KNOWLEDGE_TRIGGERS = frozenset({
-    "use knowledge base",
-    "search knowledge base",
-    "from knowledge base",
+    "knowledge base",          # catches "use KB", "using KB", "from KB", "search KB", etc.
     "from uploaded documents",
     "read document",
     "read the document",
     "uploaded document",
     "uploaded file",
 })
+
+
+def _file_not_found_msg(filename: str, available: list[str]) -> str:
+    msg = f"**File not found:** `{filename}`"
+    if available:
+        doc_list = "\n".join(f"- {n}" for n in available)
+        msg += f"\n\n**Available documents:**\n{doc_list}"
+    return msg
 
 
 async def get_org_filenames(
@@ -260,7 +276,8 @@ def should_use_knowledge_for_chat(
 ) -> bool:
     """
     Return True when the user message should trigger knowledge base retrieval.
-    Matches explicit trigger phrases or a known document filename.
+    Matches explicit trigger phrases, a known document filename, or an explicit
+    "read/open/... <file.ext>" pattern (catches requests for unknown files too).
     """
     lower = text.lower()
     if any(trigger in lower for trigger in _CHAT_KNOWLEDGE_TRIGGERS):
@@ -269,6 +286,8 @@ def should_use_knowledge_for_chat(
         for name in filenames:
             if name.lower() in lower:
                 return True
+    if _READ_FILENAME_PATTERN.search(text):
+        return True
     return False
 
 
@@ -295,25 +314,30 @@ async def get_chat_document_context(
     query: str,
     top_k: int = 5,
     filenames: list[str] | None = None,
-) -> tuple[str, str, list[dict]]:
+) -> tuple[str, str, list[dict], str | None]:
     """
-    Return (prompt_text, citations_block, chunks_metadata) for chat injection.
+    Return (prompt_text, citations_block, chunks_metadata, error) for chat injection.
 
-    When a filename is detected in the query, chunks from that specific file are
-    fetched directly. Otherwise falls back to keyword-scored search across all files.
+    - Named file in org → targeted retrieval ONLY from that file; no keyword fallback.
+    - Explicit "read <file.ext>" for unknown file → file-not-found error, no LLM call.
+    - No specific file → keyword search across all org files.
+
+    error is None on success; a human-readable message when the caller should skip
+    the LLM call (file not found, unreadable file, etc.).
     """
     chunks: list[KnowledgeChunkResult] = []
 
-    # Prefer targeted retrieval when the user explicitly names a file
+    # ── 1. Check for a known filename mentioned in the query ──────────────────
     named_file: str | None = None
     if filenames:
-        lower = query.lower()
+        lower_query = query.lower()
         for name in filenames:
-            if name.lower() in lower:
+            if name.lower() in lower_query:
                 named_file = name
                 break
 
     if named_file:
+        # Targeted retrieval — do NOT fall back to keyword search under any circumstance
         file_result = await db.execute(
             select(KnowledgeFile)
             .where(
@@ -323,26 +347,47 @@ async def get_chat_document_context(
             )
         )
         kf = file_result.scalar_one_or_none()
-        if kf is not None:
-            text = extract_file_text(kf.file_path, kf.file_type).strip()
-            if text:
-                for idx, chunk_text in enumerate(split_chunks(text)[:top_k]):
-                    chunks.append(
-                        KnowledgeChunkResult(
-                            file_id=kf.id,
-                            file_name=kf.name,
-                            chunk_index=idx,
-                            content=chunk_text,
-                            relevance_score=1.0,
-                        )
-                    )
+        if kf is None:
+            return "", "", [], _file_not_found_msg(named_file, filenames or [])
+        text = extract_file_text(kf.file_path, kf.file_type).strip()
+        if not text:
+            return "", "", [], (
+                f"**Could not read `{named_file}`:** the file exists but no text "
+                "could be extracted (it may be empty, corrupted, or in an unsupported format)."
+            )
+        for idx, chunk_text in enumerate(split_chunks(text)[:top_k]):
+            chunks.append(
+                KnowledgeChunkResult(
+                    file_id=kf.id,
+                    file_name=kf.name,
+                    chunk_index=idx,
+                    content=chunk_text,
+                    relevance_score=1.0,
+                )
+            )
 
-    if not chunks:
+    else:
+        # ── 2. Detect explicit "read <unknown-file.ext>" pattern ──────────────
+        m = _READ_FILENAME_PATTERN.search(query)
+        if m:
+            requested = m.group(1)
+            return "", "", [], _file_not_found_msg(requested, filenames or [])
+
+        # ── 3. General keyword search across all org files ────────────────────
         chunks = await search_knowledge_by_query(db, organization_id, query, top_k)
 
     if not chunks:
-        return "", "", []
+        return "", "", [], None
 
+    # ── Log retrieval stats ───────────────────────────────────────────────────
+    retrieved_files = list(dict.fromkeys(c.file_name for c in chunks))
+    log.debug(
+        "KB Retrieval:\n  file=%s\n  chunks=%d",
+        ", ".join(retrieved_files),
+        len(chunks),
+    )
+
+    # ── Build prompt text and citations from actual retrieved chunks ──────────
     sections: list[str] = []
     metadata: list[dict] = []
     total_chars = 0
@@ -367,19 +412,19 @@ async def get_chat_document_context(
 
     prompt_text = "\n\n---\n\n".join(sections)
 
-    # Build citations block
+    # Citations reflect only the actually retrieved chunks
     seen_files: dict[str, list[int]] = {}
-    for m in metadata:
-        fname = m["file_name"]
+    for item in metadata:
+        fname = item["file_name"]
         if fname not in seen_files:
             seen_files[fname] = []
-        seen_files[fname].append(m["chunk_index"] + 1)
+        seen_files[fname].append(item["chunk_index"] + 1)
 
     citation_lines = ["Sources:"]
     for fname, chunk_nums in seen_files.items():
         citation_lines.append(f"- {fname}")
         for n in chunk_nums:
-            citation_lines.append(f"- chunk {n}")
+            citation_lines.append(f"  - chunk {n}")
     citations_block = "\n".join(citation_lines)
 
-    return prompt_text, citations_block, metadata
+    return prompt_text, citations_block, metadata, None
