@@ -1,9 +1,11 @@
 import uuid
-from typing import TYPE_CHECKING, Any, List
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, List, Optional
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ForeignKey, Integer, Text, Index
+from sqlalchemy import DateTime, ForeignKey, Integer, Text, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
 
 from app.db.base import Base
 
@@ -36,9 +38,14 @@ class KnowledgeChunk(Base):
         nullable=False
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[List[float]] = mapped_column(Vector(1536), nullable=False)
+    embedding: Mapped[Optional[List[float]]] = mapped_column(Vector(1536), nullable=True)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     metadata_: Mapped[Any | None] = mapped_column("metadata", JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
 
     # Relationships
     organization: Mapped["Organization"] = relationship(

@@ -70,7 +70,7 @@ def extract_file_text(file_path: str, file_type: str) -> str:
 
 # ── Chunking ──────────────────────────────────────────────────────────────────
 
-def _split_chunks(text: str) -> list[str]:
+def split_chunks(text: str) -> list[str]:
     """Sliding-window split into overlapping character chunks."""
     chunks: list[str] = []
     start = 0
@@ -81,6 +81,10 @@ def _split_chunks(text: str) -> list[str]:
             break
         start += _CHUNK_SIZE - _CHUNK_OVERLAP
     return chunks
+
+
+# Keep the private alias for backward compatibility within this module
+_split_chunks = split_chunks
 
 
 # ── Scoring ───────────────────────────────────────────────────────────────────
@@ -219,3 +223,163 @@ async def get_document_context(
         )
 
     return "\n\n---\n\n".join(sections), metadata
+
+
+# ── Chat-specific knowledge retrieval ─────────────────────────────────────────
+
+_CHAT_KNOWLEDGE_TRIGGERS = frozenset({
+    "use knowledge base",
+    "search knowledge base",
+    "from knowledge base",
+    "from uploaded documents",
+    "read document",
+    "read the document",
+    "uploaded document",
+    "uploaded file",
+})
+
+
+async def get_org_filenames(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+) -> list[str]:
+    """Return file names for all non-deleted knowledge files in the organization."""
+    result = await db.execute(
+        select(KnowledgeFile.name)
+        .where(
+            KnowledgeFile.organization_id == organization_id,
+            KnowledgeFile.deleted_at.is_(None),
+        )
+    )
+    return [row[0] for row in result.all()]
+
+
+def should_use_knowledge_for_chat(
+    text: str,
+    filenames: list[str] | None = None,
+) -> bool:
+    """
+    Return True when the user message should trigger knowledge base retrieval.
+    Matches explicit trigger phrases or a known document filename.
+    """
+    lower = text.lower()
+    if any(trigger in lower for trigger in _CHAT_KNOWLEDGE_TRIGGERS):
+        return True
+    if filenames:
+        for name in filenames:
+            if name.lower() in lower:
+                return True
+    return False
+
+
+async def search_knowledge_by_query(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    query: str,
+    top_k: int = 5,
+) -> list[KnowledgeChunkResult]:
+    """Return the top-k most relevant chunks for a free-text query."""
+    return await search_knowledge(
+        db,
+        organization_id,
+        task_title=query,
+        task_description="",
+        agent_role="",
+        limit=top_k,
+    )
+
+
+async def get_chat_document_context(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    query: str,
+    top_k: int = 5,
+    filenames: list[str] | None = None,
+) -> tuple[str, str, list[dict]]:
+    """
+    Return (prompt_text, citations_block, chunks_metadata) for chat injection.
+
+    When a filename is detected in the query, chunks from that specific file are
+    fetched directly. Otherwise falls back to keyword-scored search across all files.
+    """
+    chunks: list[KnowledgeChunkResult] = []
+
+    # Prefer targeted retrieval when the user explicitly names a file
+    named_file: str | None = None
+    if filenames:
+        lower = query.lower()
+        for name in filenames:
+            if name.lower() in lower:
+                named_file = name
+                break
+
+    if named_file:
+        file_result = await db.execute(
+            select(KnowledgeFile)
+            .where(
+                KnowledgeFile.organization_id == organization_id,
+                KnowledgeFile.name == named_file,
+                KnowledgeFile.deleted_at.is_(None),
+            )
+        )
+        kf = file_result.scalar_one_or_none()
+        if kf is not None:
+            text = extract_file_text(kf.file_path, kf.file_type).strip()
+            if text:
+                for idx, chunk_text in enumerate(split_chunks(text)[:top_k]):
+                    chunks.append(
+                        KnowledgeChunkResult(
+                            file_id=kf.id,
+                            file_name=kf.name,
+                            chunk_index=idx,
+                            content=chunk_text,
+                            relevance_score=1.0,
+                        )
+                    )
+
+    if not chunks:
+        chunks = await search_knowledge_by_query(db, organization_id, query, top_k)
+
+    if not chunks:
+        return "", "", []
+
+    sections: list[str] = []
+    metadata: list[dict] = []
+    total_chars = 0
+
+    for chunk in chunks:
+        if total_chars >= _MAX_CONTEXT_CHARS:
+            break
+        snippet = chunk.content[: _MAX_CONTEXT_CHARS - total_chars]
+        sections.append(
+            f"### {chunk.file_name} (chunk {chunk.chunk_index + 1}, "
+            f"relevance: {chunk.relevance_score:.0%})\n\n{snippet}"
+        )
+        total_chars += len(snippet)
+        metadata.append(
+            {
+                "file_name": chunk.file_name,
+                "file_id": str(chunk.file_id),
+                "chunk_index": chunk.chunk_index,
+                "relevance_score": chunk.relevance_score,
+            }
+        )
+
+    prompt_text = "\n\n---\n\n".join(sections)
+
+    # Build citations block
+    seen_files: dict[str, list[int]] = {}
+    for m in metadata:
+        fname = m["file_name"]
+        if fname not in seen_files:
+            seen_files[fname] = []
+        seen_files[fname].append(m["chunk_index"] + 1)
+
+    citation_lines = ["Sources:"]
+    for fname, chunk_nums in seen_files.items():
+        citation_lines.append(f"- {fname}")
+        for n in chunk_nums:
+            citation_lines.append(f"- chunk {n}")
+    citations_block = "\n".join(citation_lines)
+
+    return prompt_text, citations_block, metadata

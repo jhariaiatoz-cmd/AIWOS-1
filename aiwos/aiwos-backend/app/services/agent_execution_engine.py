@@ -44,6 +44,52 @@ from app.services.llm_provider_service import (
 
 logger = logging.getLogger(__name__)
 
+_KNOWLEDGE_TRIGGERS = {
+    "knowledge base",
+    "uploaded file",
+    "attached document",
+    "company document",
+    "analyze document",
+    "use documents",
+    "use knowledge base",
+}
+
+
+def _should_use_knowledge(title: str, description: str) -> bool:
+    text = f"{title} {description}".lower()
+    return any(trigger in text for trigger in _KNOWLEDGE_TRIGGERS)
+
+
+async def _update_project_status(db: AsyncSession, project_id: Optional[uuid.UUID]) -> None:
+    """Recalculate and persist project status based on task completion."""
+    if project_id is None:
+        return
+    try:
+        from sqlalchemy import func as _func
+        total = await db.scalar(
+            select(_func.count()).where(Task.project_id == project_id, Task.deleted_at.is_(None))
+        ) or 0
+        if total == 0:
+            return
+        done = await db.scalar(
+            select(_func.count()).where(
+                Task.project_id == project_id,
+                Task.status == "Done",
+                Task.deleted_at.is_(None),
+            )
+        ) or 0
+        new_status = "Completed" if done == total else "Active"
+        project_result = await db.execute(
+            select(Project).where(Project.id == project_id, Project.deleted_at.is_(None))
+        )
+        project = project_result.scalar_one_or_none()
+        if project and project.status != new_status and project.status != "Archived":
+            project.status = new_status
+            await db.commit()
+    except Exception:
+        logger.exception("Failed to update project status for project_id=%s", project_id)
+
+
 _DEFAULT_MODEL = "gemini-2.5-flash"
 _HANDOFF_CHAR_LIMIT = 3_000
 _PHASE_ORDER = ["Research", "Design", "Development", "Testing", "Deployment"]
@@ -219,14 +265,17 @@ class AgentExecutionEngine:
     ) -> TaskExecution:
         """Inner execution body — called after the execution is committed as 'running'."""
 
-        # 3. Load knowledge context
-        knowledge_context, knowledge_meta = await get_document_context(
-            self.db,
-            task.organization_id,
-            task_title=task.title,
-            task_description=task.description or "",
-            agent_role=agent.role or "",
-        )
+        # 3. Load knowledge context (opt-in: only when task text references knowledge)
+        if _should_use_knowledge(task.title, task.description or ""):
+            knowledge_context, knowledge_meta = await get_document_context(
+                self.db,
+                task.organization_id,
+                task_title=task.title,
+                task_description=task.description or "",
+                agent_role=agent.role or "",
+            )
+        else:
+            knowledge_context, knowledge_meta = "", []
 
         # 4. Load dependency context (prior completed phases)
         prior_phase_context, dep_refs = await self._load_prior_phase_context(
@@ -370,6 +419,9 @@ class AgentExecutionEngine:
 
         task.status = "Done"
         await self.db.commit()
+
+        # Update project completion status based on task progress
+        await _update_project_status(self.db, task.project_id)
 
         # 8a. Persist memory of this completed task
         await save_memory(

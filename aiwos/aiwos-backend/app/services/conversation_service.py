@@ -23,6 +23,11 @@ from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.schemas.conversation import ConversationCreate
+from app.services.knowledge_retrieval_service import (
+    get_chat_document_context,
+    get_org_filenames,
+    should_use_knowledge_for_chat,
+)
 from app.services.llm_provider_service import (
     ChatMessage,
     complete_with_history as llm_complete,
@@ -579,6 +584,26 @@ async def send_message(
 
 
 # ---------------------------------------------------------------------------
+# Knowledge context injection
+# ---------------------------------------------------------------------------
+
+def _inject_knowledge_context(user_message: str, knowledge_context: str) -> str:
+    """Prepend retrieved knowledge content to the user message."""
+    return "\n".join([
+        "## Retrieved Document Content",
+        "",
+        "The following content was retrieved from uploaded knowledge base documents.",
+        "Base your response on this content. Do not claim you cannot access files — the content is provided above.",
+        "",
+        knowledge_context,
+        "",
+        "---",
+        "",
+        user_message,
+    ])
+
+
+# ---------------------------------------------------------------------------
 # Background LLM execution
 # ---------------------------------------------------------------------------
 
@@ -643,10 +668,31 @@ async def _generate_agent_reply(
                 conversation_id, exc,
             )
 
+        # Knowledge retrieval (opt-in: only when message triggers it)
+        knowledge_context = ""
+        citations_block = ""
+        try:
+            org_filenames = await get_org_filenames(db, organization_id)
+            if should_use_knowledge_for_chat(new_message, org_filenames):
+                knowledge_context, citations_block, _ = await get_chat_document_context(
+                    db, organization_id, new_message,
+                    filenames=org_filenames,
+                )
+        except Exception as exc:
+            log.warning("Knowledge retrieval failed (non-fatal): %s", exc)
+
         # Inject history as text into the user message
         message_with_context = _format_conversation_context(history_msgs, new_message)
 
+        # Prepend knowledge context when available
+        if knowledge_context:
+            message_with_context = _inject_knowledge_context(message_with_context, knowledge_context)
+
         agent_content, payload = await _call_llm(agent, message_with_context, [])
+
+        # Append source citations when knowledge was used
+        if citations_block and agent_content and not agent_content.startswith("I encountered an error"):
+            agent_content = f"{agent_content}\n\n---\n\n{citations_block}"
 
         agent_msg = Message(
             id=uuid.uuid4(),

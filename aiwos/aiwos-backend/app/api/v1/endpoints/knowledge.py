@@ -1,11 +1,16 @@
 import uuid
+from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse, PlainTextResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
+from app.models.knowledge_chunk import KnowledgeChunk
+from app.models.knowledge_file import KnowledgeFile
 from app.models.user import User
 from app.schemas.knowledge import KnowledgeChunkSearchResult, KnowledgeFileResponse
 from app.services.knowledge_retrieval_service import search_knowledge
@@ -73,3 +78,57 @@ async def delete_file(
     _: User = Depends(get_current_user),
 ) -> None:
     await delete_knowledge_file(db, file_id)
+
+
+_MEDIA_TYPES: dict[str, str] = {
+    "pdf": "application/pdf",
+    "txt": "text/plain",
+    "md": "text/markdown",
+    "csv": "text/csv",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+
+@router.get("/{file_id}/content")
+async def view_file_content(
+    file_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> FileResponse:
+    result = await db.execute(
+        select(KnowledgeFile).where(
+            KnowledgeFile.id == file_id,
+            KnowledgeFile.deleted_at.is_(None),
+        )
+    )
+    kf = result.scalar_one_or_none()
+    if kf is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.")
+    path = Path(kf.file_path)
+    if not path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found on disk.")
+    media_type = _MEDIA_TYPES.get(kf.file_type, "application/octet-stream")
+    return FileResponse(path, media_type=media_type, filename=kf.name)
+
+
+@router.get("/{file_id}/text")
+async def get_file_text(
+    file_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> PlainTextResponse:
+    result = await db.execute(
+        select(KnowledgeFile).where(
+            KnowledgeFile.id == file_id,
+            KnowledgeFile.deleted_at.is_(None),
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.")
+    chunk_result = await db.execute(
+        select(KnowledgeChunk.content)
+        .where(KnowledgeChunk.knowledge_file_id == file_id)
+        .order_by(KnowledgeChunk.chunk_index)
+    )
+    text = "\n\n".join(chunk_result.scalars().all())
+    return PlainTextResponse(text or "(No text extracted from this document.)")

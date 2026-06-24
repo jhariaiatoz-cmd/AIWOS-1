@@ -29,4 +29,14 @@ export const knowledgeApi = {
   },
 
   delete: (id: string) => apiClient.delete(`/knowledge/${id}`),
+
+  getContent: (id: string) =>
+    apiClient
+      .get<Blob>(`/knowledge/${id}/content`, { responseType: "blob" })
+      .then((r) => r.data),
+
+  getText: (id: string) =>
+    apiClient
+      .get<string>(`/knowledge/${id}/text`, { responseType: "text" })
+      .then((r) => r.data),
 };

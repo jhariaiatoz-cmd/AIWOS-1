@@ -26,7 +26,7 @@ function toDisplayProject(p: ProjectApiResponse): Project {
     title: p.name,
     description: p.description ?? "",
     status: mapProjectStatus(p.status),
-    progress: 0,
+    progress: p.progress,
     agentCount: 0,
     agents: [],
     startDate: p.created_at,

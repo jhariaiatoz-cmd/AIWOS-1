@@ -59,5 +59,8 @@ class ProjectResponse(BaseModel):
     owner_agent: OwnerAgentInfo | None = None
     created_at: datetime
     updated_at: datetime
+    progress: int = 0
+    total_tasks: int = 0
+    completed_tasks: int = 0
 
     model_config = {"from_attributes": True}

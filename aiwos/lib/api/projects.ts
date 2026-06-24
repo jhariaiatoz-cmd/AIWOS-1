@@ -17,6 +17,9 @@ export type ProjectApiResponse = {
   owner_agent: AgentInfo | null;
   created_at: string;
   updated_at: string;
+  progress: number;
+  total_tasks: number;
+  completed_tasks: number;
 };
 
 export const projectApi = {

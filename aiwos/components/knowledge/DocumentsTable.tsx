@@ -1,6 +1,6 @@
 "use client";
 
-import { FileArchive, FileText, MoreVertical, Table, Trash2 } from "lucide-react";
+import { Eye, FileArchive, FileText, MoreVertical, Table, Trash2 } from "lucide-react";
 
 export type KnowledgeFileType = "pdf" | "docx" | "txt" | "md" | "csv";
 
@@ -15,6 +15,7 @@ export interface KnowledgeDocument {
 interface DocumentsTableProps {
   documents: KnowledgeDocument[];
   onDelete?: (id: string) => void;
+  onView?: (doc: KnowledgeDocument) => void;
 }
 
 const TYPE_STYLES: Record<
@@ -80,7 +81,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function DocumentsTable({ documents, onDelete }: DocumentsTableProps) {
+export function DocumentsTable({ documents, onDelete, onView }: DocumentsTableProps) {
   return (
     <div
       className="overflow-hidden rounded-xl border"
@@ -150,22 +151,33 @@ export function DocumentsTable({ documents, onDelete }: DocumentsTableProps) {
                   </span>
                 </td>
                 <td className="px-6 py-4 text-center">
-                  {onDelete ? (
-                    <button
-                      onClick={() => onDelete(doc.id)}
-                      className="inline-flex items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-[var(--border)] hover:text-red-500"
-                      aria-label={`Delete ${doc.name}`}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  ) : (
-                    <button
-                      className="inline-flex items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-[var(--border)] hover:text-foreground"
-                      aria-label={`Actions for ${doc.name}`}
-                    >
-                      <MoreVertical size={16} />
-                    </button>
-                  )}
+                  <div className="inline-flex items-center justify-center gap-1">
+                    {onView && (
+                      <button
+                        onClick={() => onView(doc)}
+                        className="inline-flex items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-[var(--border)] hover:text-foreground"
+                        aria-label={`View ${doc.name}`}
+                      >
+                        <Eye size={15} />
+                      </button>
+                    )}
+                    {onDelete ? (
+                      <button
+                        onClick={() => onDelete(doc.id)}
+                        className="inline-flex items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-[var(--border)] hover:text-red-500"
+                        aria-label={`Delete ${doc.name}`}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    ) : (
+                      <button
+                        className="inline-flex items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-[var(--border)] hover:text-foreground"
+                        aria-label={`Actions for ${doc.name}`}
+                      >
+                        <MoreVertical size={16} />
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

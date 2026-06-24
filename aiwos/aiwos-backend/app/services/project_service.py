@@ -2,13 +2,30 @@ import uuid
 from typing import List
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.project import Project
+from app.models.task import Task
 from app.schemas.project import ProjectCreate, ProjectUpdate
+
+
+async def _attach_progress(db: AsyncSession, project: Project) -> None:
+    total = await db.scalar(
+        select(func.count()).where(Task.project_id == project.id, Task.deleted_at.is_(None))
+    ) or 0
+    done = await db.scalar(
+        select(func.count()).where(
+            Task.project_id == project.id,
+            Task.status == "Done",
+            Task.deleted_at.is_(None),
+        )
+    ) or 0
+    project.total_tasks = total  # type: ignore[attr-defined]
+    project.completed_tasks = done  # type: ignore[attr-defined]
+    project.progress = round((done / total) * 100) if total > 0 else 0  # type: ignore[attr-defined]
 
 
 async def create_project(
@@ -48,6 +65,7 @@ async def get_project(db: AsyncSession, project_id: uuid.UUID) -> Project:
     project = result.scalar_one_or_none()
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+    await _attach_progress(db, project)
     return project
 
 
@@ -65,7 +83,10 @@ async def list_projects(
         .offset(skip)
         .limit(limit)
     )
-    return list(result.scalars().all())
+    projects = list(result.scalars().all())
+    for p in projects:
+        await _attach_progress(db, p)
+    return projects
 
 
 async def update_project(
