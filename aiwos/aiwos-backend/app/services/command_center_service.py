@@ -209,10 +209,105 @@ _BLUEPRINT_SYSTEM = (
 )
 
 
+def _static_blueprint(project_name: str, description: str) -> Dict[str, Any]:
+    return {
+        "requirements": (
+            f"• Core functionality for {project_name}\n"
+            "• User authentication and authorization\n"
+            "• Responsive, accessible UI\n"
+            "• RESTful API with versioning\n"
+            "• Automated testing and CI/CD pipeline"
+        ),
+        "features": (
+            f"• {project_name} core module\n"
+            "• User management and roles\n"
+            "• Dashboard and reporting\n"
+            "• Notifications and alerts\n"
+            "• Data export and integrations"
+        ),
+        "user_roles": (
+            "• Admin — full system access, configuration, user management\n"
+            "• Manager — project oversight, reporting, team coordination\n"
+            "• Developer — feature implementation, code reviews\n"
+            "• Viewer — read-only access to reports and dashboards"
+        ),
+        "architecture": (
+            "• Frontend: React/Next.js SPA with component-driven design\n"
+            "• Backend: FastAPI (Python) REST API, async, typed\n"
+            "• Database: PostgreSQL with SQLAlchemy ORM\n"
+            "• Auth: JWT with refresh tokens\n"
+            "• Deployment: Docker containers on cloud infrastructure"
+        ),
+        "database_design": (
+            f"• users — auth, profiles, roles\n"
+            f"• organizations — multi-tenancy\n"
+            f"• {project_name.lower().replace(' ', '_')}_records — core domain entities\n"
+            "• audit_logs — change tracking\n"
+            "• Foreign keys and soft-delete on all major tables"
+        ),
+        "api_modules": (
+            "• /auth — login, register, token refresh\n"
+            "• /users — CRUD, role assignment\n"
+            "• /projects — project lifecycle management\n"
+            "• /tasks — task assignment and tracking\n"
+            "• /reports — aggregations and exports"
+        ),
+        "deployment_strategy": (
+            "• Environments: dev → staging → production\n"
+            "• Docker Compose for local; Kubernetes for production\n"
+            "• GitHub Actions CI/CD with automated tests\n"
+            "• Blue/green deployment for zero-downtime releases\n"
+            "• Secrets managed via environment variables / Vault"
+        ),
+        "prompt_pack": {
+            "frontend": (
+                f"Build the frontend for {project_name}. Use Next.js with TypeScript and Tailwind CSS. "
+                "Create a responsive dashboard layout with sidebar navigation. Implement pages for "
+                "authentication (login/register), main dashboard, list views with filters and sorting, "
+                "detail views with inline editing, and a settings panel. Use React Query for server "
+                "state management and Zod for form validation. All components must be accessible "
+                "(ARIA labels, keyboard navigation). Follow atomic design: atoms → molecules → organisms → pages."
+            ),
+            "backend": (
+                f"Build the backend API for {project_name}. Use FastAPI with async SQLAlchemy and PostgreSQL. "
+                "Implement JWT authentication with refresh tokens. Structure the codebase as: "
+                "models (SQLAlchemy ORM), schemas (Pydantic), services (business logic), "
+                "endpoints (FastAPI routers). Every route must be authenticated. Use dependency injection "
+                "for DB sessions and current user. Implement soft deletes, pagination, and filtering on "
+                "all list endpoints. Add request logging middleware."
+            ),
+            "database": (
+                f"Design the PostgreSQL database for {project_name}. Create tables for users, organizations, "
+                "and the core domain entities with proper foreign keys, indexes, and constraints. "
+                "Add created_at/updated_at timestamps and deleted_at for soft deletes on all tables. "
+                "Use UUID primary keys. Write Alembic migrations for every schema change. "
+                "Add composite indexes on frequently filtered columns. Document the entity-relationship "
+                "diagram with cardinality and cascade rules."
+            ),
+            "testing": (
+                f"Write comprehensive tests for {project_name}. Use pytest with pytest-asyncio for the "
+                "backend. Write unit tests for service functions (mock DB), integration tests for API "
+                "endpoints (real test DB), and end-to-end tests for critical user flows. Aim for 80%+ "
+                "coverage on service and endpoint layers. For the frontend, use Vitest for unit tests "
+                "and Playwright for E2E. Test authentication flows, CRUD operations, error states, "
+                "and edge cases. Include a CI step that blocks merges on failing tests."
+            ),
+            "deployment": (
+                f"Set up deployment infrastructure for {project_name}. Write a multi-stage Dockerfile "
+                "for both frontend (Node build → Nginx) and backend (Python). Create docker-compose.yml "
+                "for local development with hot-reload. Configure GitHub Actions workflows: lint → test → "
+                "build → push to registry → deploy to staging on PR merge, deploy to production on release tag. "
+                "Use environment-specific .env files for config. Set up health check endpoints and "
+                "configure a reverse proxy with SSL termination."
+            ),
+        },
+    }
+
+
 async def _generate_project_blueprint(
     project_name: str, description: str
 ) -> Dict[str, Any]:
-    """Call LLM to generate the Project Blueprint + Prompt Pack. Returns empty dict on failure."""
+    """Call LLM to generate the Project Blueprint + Prompt Pack. Falls back to static on failure."""
     try:
         response = await llm_complete(
             model=_PLAN_MODEL,
@@ -223,10 +318,15 @@ async def _generate_project_blueprint(
         if raw.startswith("```"):
             raw = re.sub(r"^```[^\n]*\n?", "", raw)
             raw = re.sub(r"\n?```$", "", raw.strip())
-        return json.loads(raw)
+        result = json.loads(raw)
+        log.info("[blueprint] LLM blueprint generated for '%s'; prompt_pack present=%s", project_name, bool(result.get("prompt_pack")))
+        if not result.get("prompt_pack"):
+            result["prompt_pack"] = _static_blueprint(project_name, description)["prompt_pack"]
+            log.info("[blueprint] LLM omitted prompt_pack — injected static fallback for '%s'", project_name)
+        return result
     except Exception as exc:
-        log.warning("Blueprint LLM call failed (%s); returning empty blueprint.", exc)
-        return {}
+        log.warning("[blueprint] LLM blueprint call failed (%s); using static fallback for '%s'.", exc, project_name)
+        return _static_blueprint(project_name, description)
 
 
 # ---------------------------------------------------------------------------
@@ -349,12 +449,16 @@ async def execute_command(
     blueprint_sections: Dict[str, Any] = {}
     prompt_pack_data: Dict[str, Any] = {}
     if blueprint_raw:
+        log.info("[blueprint] Blueprint generated for project id=%s keys=%s", project.id, list(blueprint_raw.keys()))
         prompt_pack_data = blueprint_raw.pop("prompt_pack", {})
+        log.info("[blueprint] Prompt pack generated for project id=%s keys=%s", project.id, list(prompt_pack_data.keys()))
         blueprint_sections = blueprint_raw
         stored_blueprint = {**blueprint_sections, "prompt_pack": prompt_pack_data}
         project.blueprint = stored_blueprint
         await db.commit()
-        log.info("Stored blueprint for project id=%s", project.id)
+        log.info("[blueprint] Blueprint saved to DB for project id=%s prompt_pack_keys=%s", project.id, list(prompt_pack_data.keys()))
+    else:
+        log.warning("[blueprint] blueprint_raw is empty for project id=%s — blueprint and prompt_pack will NOT be stored", project.id)
 
     # ── 5. Build phase_tasks for bulk creation ───────────────────────────────
     phase_tasks: List[Dict[str, Any]] = []

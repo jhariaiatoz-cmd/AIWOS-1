@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import List
 
@@ -16,6 +17,8 @@ from app.services.project_service import (
     list_projects,
     update_project,
 )
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -46,7 +49,16 @@ async def get_one(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ) -> Project:
-    return await get_project(db, project_id)
+    project = await get_project(db, project_id)
+    has_blueprint = project.blueprint is not None
+    has_prompt_pack = bool(
+        project.blueprint and project.blueprint.get("prompt_pack")
+    )
+    log.info(
+        "[blueprint] GET project id=%s has_blueprint=%s has_prompt_pack=%s",
+        project_id, has_blueprint, has_prompt_pack,
+    )
+    return project
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)

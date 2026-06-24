@@ -1,33 +1,37 @@
 """
-WorkflowExecutionEngine — sequential workflow step executor with agent handoffs.
+WorkflowExecutionEngine — parallel-aware workflow step executor with agent handoffs.
 
-Loads a Workflow's steps (ordered by step_order), executes each step with
-AgentExecutionEngine, passes the previous step's output as context to the
-next, and stops immediately on any step failure.
+Steps sharing the same step_order are executed concurrently via asyncio.gather().
+Steps with unique step_orders run sequentially (preserving existing behaviour exactly).
 
-Each WorkflowStep must have config["task_id"] pointing to an existing Task.
-Steps without a task_id are skipped with a warning.
+Parallelism is bounded by MAX_PARALLEL_AGENTS (semaphore).  Each parallel step
+gets its own isolated AsyncSession so the shared session is never used concurrently.
+
+Fallback: if asyncio.gather() itself raises an unexpected error the group is
+re-run sequentially via the original _execute_step path.
 
 State is persisted in WorkflowExecution throughout execution:
-  - current_step_order  : step_order of the active step
+  - current_step_order  : step_order of the active group
   - completed_steps     : list of completed step summaries
   - failed_steps        : list of failed step summaries
   - step_outputs        : dict of node_id -> output content
   - status              : pending | running | completed | failed
 
-Agent handoffs are recorded in AgentHandoff rows whenever output is passed
-from one step's agent to the next step's agent.
+Agent handoffs are recorded in AgentHandoff rows for sequential step transitions.
 """
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
+from itertools import groupby
 from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
 from app.models.agent_handoff import AgentHandoff
 from app.models.task import Task
@@ -40,6 +44,9 @@ from app.services.agent_execution_engine import AgentExecutionEngine
 logger = logging.getLogger(__name__)
 
 _PRIOR_STEP_CHAR_LIMIT = 3_000
+
+# Maximum agents that may execute concurrently across all parallel groups.
+MAX_PARALLEL_AGENTS = 5
 
 
 class _WorkflowStepEngine(AgentExecutionEngine):
@@ -87,7 +94,10 @@ class _WorkflowStepEngine(AgentExecutionEngine):
 
 class WorkflowExecutionEngine:
     """
-    Sequential workflow executor with agent-to-agent handoff tracking.
+    Parallel-aware workflow executor with sequential fallback.
+
+    Steps sharing the same step_order run concurrently; steps with different
+    orders run sequentially in ascending order.
 
     Usage::
 
@@ -110,12 +120,13 @@ class WorkflowExecutionEngine:
         wf_exec_id: Optional[uuid.UUID] = None,
     ) -> WorkflowExecution:
         """
-        Execute all steps of the workflow sequentially and return the
-        WorkflowExecution record with full state.
+        Execute all workflow steps and return the WorkflowExecution record.
+
+        Steps with the same step_order are run in parallel.
+        Steps with unique step_orders are run sequentially (existing behaviour).
 
         If wf_exec_id is provided the engine reuses that existing
-        WorkflowExecution row (created by the endpoint before dispatching
-        the background task); otherwise a new row is created.
+        WorkflowExecution row; otherwise a new row is created.
         """
         workflow = await self._load_workflow(workflow_id)
         steps = sorted(workflow.steps, key=lambda s: s.step_order)
@@ -131,67 +142,138 @@ class WorkflowExecutionEngine:
         )
 
         if not steps:
-            logger.info("Workflow %s | execution_id=%s | no steps → completed", workflow_id, wf_exec.id)
+            logger.info(
+                "Workflow %s | execution_id=%s | no steps → completed",
+                workflow_id, wf_exec.id,
+            )
             return await self._finish(wf_exec, status="completed")
 
+        # Group steps by step_order; steps sharing an order run in parallel.
+        step_groups: list[tuple[int, list[WorkflowStep]]] = [
+            (order, list(grp))
+            for order, grp in groupby(steps, key=lambda s: s.step_order)
+        ]
+
+        semaphore = asyncio.Semaphore(MAX_PARALLEL_AGENTS)
         prior_output: Optional[str] = None
+
+        # Handoff tracking is only maintained for sequential (single-step) groups.
         prev_step: Optional[WorkflowStep] = None
         prev_result: Optional[TaskExecution] = None
 
-        for step in steps:
-            task_id = self._extract_task_id(step)
-            if task_id is None:
-                logger.warning(
-                    "Workflow %s | execution_id=%s | step '%s' (order=%d) has no task_id; skipping.",
-                    workflow_id, wf_exec.id, step.node_id, step.step_order,
-                )
-                continue
-
-            wf_exec.current_step_order = step.step_order
+        for order, group_steps in step_groups:
+            wf_exec.current_step_order = order
             await self.db.commit()
 
-            logger.info(
-                "Workflow %s | execution_id=%s | step '%s' order=%d task_id=%s | starting",
-                workflow_id, wf_exec.id, step.node_id, step.step_order, task_id,
-            )
+            if len(group_steps) == 1:
+                # ---- Sequential path — original behaviour preserved exactly ----
+                step = group_steps[0]
+                task_id = self._extract_task_id(step)
+                if task_id is None:
+                    logger.warning(
+                        "Workflow %s | execution_id=%s | step '%s' (order=%d) has no task_id; skipping.",
+                        workflow_id, wf_exec.id, step.node_id, step.step_order,
+                    )
+                    continue
 
-            result, error = await self._execute_step(step, task_id, prior_output)
-
-            if error or result is None or result.status == "failed":
-                err_msg = error or (result.error_message if result else "Unknown error")
-                logger.error(
-                    "Workflow %s | execution_id=%s | step '%s' order=%d task_id=%s | failed: %s",
-                    workflow_id, wf_exec.id, step.node_id, step.step_order, task_id, err_msg,
+                logger.info(
+                    "Workflow %s | execution_id=%s | step '%s' order=%d task_id=%s | starting",
+                    workflow_id, wf_exec.id, step.node_id, step.step_order, task_id,
                 )
-                # Record handoff even for failed target steps so history is complete
+
+                result, error = await self._execute_step(step, task_id, prior_output)
+
+                if error or result is None or result.status == "failed":
+                    err_msg = error or (result.error_message if result else "Unknown error")
+                    logger.error(
+                        "Workflow %s | execution_id=%s | step '%s' order=%d task_id=%s | failed: %s",
+                        workflow_id, wf_exec.id, step.node_id, step.step_order, task_id, err_msg,
+                    )
+                    if prev_result is not None and prior_output is not None:
+                        await self._record_handoff(
+                            wf_exec, prev_step, prev_result, step, result, prior_output
+                        )
+                    await self._record_step_failure(wf_exec, step, result, err_msg)
+                    wf_exec.error_message = (
+                        f"Step '{step.name}' (order={step.step_order}) failed: {err_msg}"
+                    )
+                    return await self._finish(wf_exec, status="failed")
+
+                output_content = (result.output_data or {}).get("content", "")
+                logger.info(
+                    "Workflow %s | execution_id=%s | step '%s' order=%d task_id=%s agent_id=%s | completed",
+                    workflow_id, wf_exec.id, step.node_id, step.step_order, task_id,
+                    result.agent_id,
+                )
+                await self._record_step_completion(wf_exec, step, result, output_content)
+
                 if prev_result is not None and prior_output is not None:
                     await self._record_handoff(
                         wf_exec, prev_step, prev_result, step, result, prior_output
                     )
-                await self._record_step_failure(wf_exec, step, result, err_msg)
-                wf_exec.error_message = (
-                    f"Step '{step.name}' (order={step.step_order}) failed: {err_msg}"
-                )
-                return await self._finish(wf_exec, status="failed")
 
-            # Step succeeded — capture output
-            output_content = (result.output_data or {}).get("content", "")
-            logger.info(
-                "Workflow %s | execution_id=%s | step '%s' order=%d task_id=%s agent_id=%s | completed",
-                workflow_id, wf_exec.id, step.node_id, step.step_order, task_id,
-                result.agent_id,
-            )
-            await self._record_step_completion(wf_exec, step, result, output_content)
+                prev_step = step
+                prev_result = result
+                prior_output = output_content or None
 
-            # Record the handoff: previous agent → this agent
-            if prev_result is not None and prior_output is not None:
-                await self._record_handoff(
-                    wf_exec, prev_step, prev_result, step, result, prior_output
+            else:
+                # ---- Parallel path — steps share the same step_order ----
+                logger.info(
+                    "Workflow %s | execution_id=%s | order=%d | %d steps → parallel execution",
+                    workflow_id, wf_exec.id, order, len(group_steps),
                 )
 
-            prev_step = step
-            prev_result = result
-            prior_output = output_content or None
+                try:
+                    outcomes = await self._execute_parallel_group(
+                        group_steps, prior_output, semaphore
+                    )
+                except Exception as exc:
+                    # Unexpected gather failure — revert to sequential for this group.
+                    logger.warning(
+                        "Workflow %s | execution_id=%s | parallel gather failed (%s); "
+                        "falling back to sequential for order=%d",
+                        workflow_id, wf_exec.id, exc, order,
+                    )
+                    outcomes = await self._execute_sequential_fallback(
+                        group_steps, prior_output
+                    )
+
+                # Process all outcomes; siblings continue even when one fails.
+                any_failure = False
+                combined_parts: list[str] = []
+
+                for step, result, error in outcomes:
+                    if error or result is None or result.status == "failed":
+                        err_msg = error or (result.error_message if result else "Unknown error")
+                        logger.error(
+                            "Workflow %s | execution_id=%s | step '%s' order=%d | failed: %s",
+                            workflow_id, wf_exec.id, step.node_id, step.step_order, err_msg,
+                        )
+                        await self._record_step_failure(wf_exec, step, result, err_msg)
+                        any_failure = True
+                    else:
+                        output_content = (result.output_data or {}).get("content", "")
+                        logger.info(
+                            "Workflow %s | execution_id=%s | step '%s' order=%d agent_id=%s | completed",
+                            workflow_id, wf_exec.id, step.node_id, step.step_order, result.agent_id,
+                        )
+                        await self._record_step_completion(wf_exec, step, result, output_content)
+                        if output_content:
+                            combined_parts.append(
+                                f"### {step.name or step.node_id}\n\n{output_content}"
+                            )
+
+                if any_failure:
+                    wf_exec.error_message = (
+                        f"One or more parallel steps at order={order} failed."
+                    )
+                    return await self._finish(wf_exec, status="failed")
+
+                # Combined output of the group becomes prior_output for the next group.
+                prior_output = "\n\n".join(combined_parts) or None
+                # Handoff tracking is not applicable across parallel group boundaries.
+                prev_step = None
+                prev_result = None
 
         logger.info(
             "Workflow %s | execution_id=%s | all steps completed → completed",
@@ -200,7 +282,143 @@ class WorkflowExecutionEngine:
         return await self._finish(wf_exec, status="completed")
 
     # -------------------------------------------------------------------------
-    # Step execution
+    # Parallel execution helpers
+    # -------------------------------------------------------------------------
+
+    async def _execute_parallel_group(
+        self,
+        steps: list[WorkflowStep],
+        prior_output: Optional[str],
+        semaphore: asyncio.Semaphore,
+    ) -> list[tuple[WorkflowStep, Optional[TaskExecution], Optional[str]]]:
+        """
+        Run all runnable steps concurrently.  Steps without a task_id are
+        skipped (warning logged).  Each step runs in its own isolated session.
+        return_exceptions=True ensures one failure doesn't abort siblings.
+        """
+        runnable: list[tuple[WorkflowStep, uuid.UUID]] = []
+        for step in steps:
+            task_id = self._extract_task_id(step)
+            if task_id is None:
+                logger.warning(
+                    "Step '%s' (order=%d) has no task_id; skipping.",
+                    step.node_id, step.step_order,
+                )
+            else:
+                runnable.append((step, task_id))
+
+        if not runnable:
+            return []
+
+        coros = [
+            self._execute_step_isolated(step, task_id, prior_output, semaphore)
+            for step, task_id in runnable
+        ]
+        raw = await asyncio.gather(*coros, return_exceptions=True)
+
+        outcomes: list[tuple[WorkflowStep, Optional[TaskExecution], Optional[str]]] = []
+        for i, res in enumerate(raw):
+            step = runnable[i][0]
+            if isinstance(res, Exception):
+                # _execute_step_isolated catches all exceptions; this is a last-resort guard.
+                logger.error(
+                    "Step '%s': unexpected exception escaped isolated execution: %s",
+                    step.node_id, res,
+                )
+                outcomes.append((step, None, str(res)))
+            else:
+                outcomes.append(res)
+
+        return outcomes
+
+    async def _execute_step_isolated(
+        self,
+        step: WorkflowStep,
+        task_id: uuid.UUID,
+        prior_output: Optional[str],
+        semaphore: asyncio.Semaphore,
+    ) -> tuple[WorkflowStep, Optional[TaskExecution], Optional[str]]:
+        """
+        Execute one step with its own isolated AsyncSession under the semaphore.
+        Never raises — all exceptions are caught and returned as the error string.
+        """
+        async with semaphore:
+            async with AsyncSessionLocal() as db:
+                try:
+                    # Load task
+                    task_result = await db.execute(
+                        select(Task).where(Task.id == task_id, Task.deleted_at.is_(None))
+                    )
+                    task = task_result.scalar_one_or_none()
+                    if task is None:
+                        return step, None, f"Task {task_id} not found."
+
+                    # Resolve agent (step-level takes priority over task assignment)
+                    agent_id = step.agent_id or task.assigned_to
+                    if agent_id is None:
+                        return step, None, (
+                            f"Step '{step.node_id}' has no agent_id and "
+                            f"task {task_id} has no assigned agent."
+                        )
+                    agent_check = await db.execute(
+                        select(Agent).where(Agent.id == agent_id, Agent.deleted_at.is_(None))
+                    )
+                    if agent_check.scalar_one_or_none() is None:
+                        return step, None, f"Agent {agent_id} not found."
+
+                    # Create TaskExecution
+                    execution = TaskExecution(
+                        id=uuid.uuid4(),
+                        task_id=task_id,
+                        organization_id=task.organization_id,
+                        agent_id=agent_id,
+                        status="pending",
+                    )
+                    db.add(execution)
+                    await db.commit()
+                    await db.refresh(execution)
+
+                    logger.info(
+                        "Step '%s' task_id=%s agent_id=%s execution_id=%s | parallel | starting",
+                        step.node_id, task_id, agent_id, execution.id,
+                    )
+
+                    engine = _WorkflowStepEngine(db, prior_step_output=prior_output)
+                    result = await engine.run(agent_id, task_id, execution.id)
+                    return step, result, None
+
+                except Exception as exc:
+                    logger.exception(
+                        "WorkflowExecutionEngine: unhandled error on parallel step '%s': %s",
+                        step.node_id, exc,
+                    )
+                    return step, None, str(exc)
+
+    async def _execute_sequential_fallback(
+        self,
+        steps: list[WorkflowStep],
+        prior_output: Optional[str],
+    ) -> list[tuple[WorkflowStep, Optional[TaskExecution], Optional[str]]]:
+        """
+        Fallback: execute a parallel group sequentially (used when gather fails).
+        Delegates to the original _execute_step so behaviour is identical to
+        the existing sequential path.
+        """
+        outcomes: list[tuple[WorkflowStep, Optional[TaskExecution], Optional[str]]] = []
+        for step in steps:
+            task_id = self._extract_task_id(step)
+            if task_id is None:
+                logger.warning(
+                    "Step '%s' (order=%d) has no task_id; skipping.",
+                    step.node_id, step.step_order,
+                )
+                continue
+            result, error = await self._execute_step(step, task_id, prior_output)
+            outcomes.append((step, result, error))
+        return outcomes
+
+    # -------------------------------------------------------------------------
+    # Step execution (sequential — unchanged from original)
     # -------------------------------------------------------------------------
 
     async def _execute_step(
