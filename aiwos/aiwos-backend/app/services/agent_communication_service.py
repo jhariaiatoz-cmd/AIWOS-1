@@ -32,7 +32,7 @@ _MAX_REQUESTS = 3
 _MAX_RESPONSE_CHARS = 1_000
 _CONTEXT_CAP = 2_000
 _COMM_LLM_TIMEOUT = 30
-_DEFAULT_MODEL = "gemini-2.5-flash"
+_DEFAULT_MODEL = "gpt-4o-mini"
 
 
 # ---------------------------------------------------------------------------

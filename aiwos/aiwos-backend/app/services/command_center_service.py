@@ -41,7 +41,7 @@ _COMMAND_RE = re.compile(
     re.IGNORECASE,
 )
 
-_PLAN_MODEL = "gemini-2.5-flash"
+_PLAN_MODEL = "gpt-4o-mini"
 _PHASES = ["Research", "Design", "Development", "Testing", "Deployment"]
 
 

@@ -27,10 +27,9 @@ class Settings(BaseSettings):
     # Invitation settings
     INVITATION_EXPIRE_HOURS: int = 168  # 7 days
 
-    # LLM provider settings
+    # LLM provider settings (OpenAI only)
     OPENAI_API_KEY: Optional[str] = None
-    ANTHROPIC_API_KEY: Optional[str] = None
-    GEMINI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
 
     # Database settings
     DATABASE_URL: Optional[str] = None

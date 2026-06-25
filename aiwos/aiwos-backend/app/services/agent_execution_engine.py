@@ -90,7 +90,7 @@ async def _update_project_status(db: AsyncSession, project_id: Optional[uuid.UUI
         logger.exception("Failed to update project status for project_id=%s", project_id)
 
 
-_DEFAULT_MODEL = "gemini-2.5-flash"
+_DEFAULT_MODEL = "gpt-4o-mini"
 _HANDOFF_CHAR_LIMIT = 3_000
 _PHASE_ORDER = ["Research", "Design", "Development", "Testing", "Deployment"]
 _RETRY_DELAYS = [2, 5, 10]

@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 
 _HISTORY_WINDOW = 10        # prior turns to load from DB for context
 _MAX_HISTORY_CHARS = 20_000  # hard cap on total conversation history characters
-_FALLBACK_MODEL  = "gemini-2.5-flash"
+_FALLBACK_MODEL  = "gpt-4o-mini"
 
 
 # ---------------------------------------------------------------------------
