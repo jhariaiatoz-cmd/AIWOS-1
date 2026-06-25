@@ -63,7 +63,9 @@ function ExecutionHealthCard({ card }: { card: ExecutionHealthCardDef }) {
       style={{ background: "var(--card)", borderColor: "var(--border-light)" }}
     >
       <div className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Icon size={14} style={{ color: card.color }} />
+        <span style={{ color: card.color }}>
+  <Icon size={14} />
+</span>
         {card.label}
       </div>
       <div className="flex items-start justify-between">
