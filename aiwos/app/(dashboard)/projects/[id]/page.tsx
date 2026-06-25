@@ -338,16 +338,24 @@ const PROMPT_PACK_ITEMS: { key: string; label: string }[] = [
 
 function CopyBtn({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  const doCopy = async (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation();
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
   return (
-    <button
-      type="button"
-      onClick={async (e) => {
-        e.stopPropagation();
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={doCopy}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          doCopy(e);
+        }
       }}
-      className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors"
+      className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors cursor-pointer"
       style={{
         background: copied ? "rgba(16,185,129,0.12)" : "var(--elevated)",
         color: copied ? "var(--green)" : "var(--muted-foreground)",
@@ -355,7 +363,7 @@ function CopyBtn({ text }: { text: string }) {
     >
       {copied ? <Check size={10} /> : <Copy size={10} />}
       {copied ? "Copied" : "Copy"}
-    </button>
+    </span>
   );
 }
 

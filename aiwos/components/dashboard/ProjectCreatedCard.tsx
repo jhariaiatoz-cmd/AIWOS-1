@@ -35,17 +35,25 @@ const PROMPT_LABELS: { key: keyof PromptPackData; label: string }[] = [
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = async () => {
+  const handleCopy = async (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation();
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <button
-      type="button"
+    <span
+      role="button"
+      tabIndex={0}
       onClick={handleCopy}
-      className="shrink-0 rounded-md px-2 py-1 text-[10px] font-medium transition-colors flex items-center gap-1"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleCopy(e);
+        }
+      }}
+      className="shrink-0 rounded-md px-2 py-1 text-[10px] font-medium transition-colors flex items-center gap-1 cursor-pointer"
       style={{
         background: copied ? "rgba(16,185,129,0.12)" : "var(--elevated)",
         color: copied ? "var(--green)" : "var(--muted-foreground)",
@@ -54,7 +62,7 @@ function CopyButton({ text }: { text: string }) {
     >
       {copied ? <Check size={10} /> : <Copy size={10} />}
       {copied ? "Copied" : "Copy"}
-    </button>
+    </span>
   );
 }
 
