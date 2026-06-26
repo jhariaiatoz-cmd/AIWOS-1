@@ -10,10 +10,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 _ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
+    "https://aiwos-1.vercel.app"
 ]
 
 app = FastAPI(
